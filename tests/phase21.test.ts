@@ -41,7 +41,7 @@ describe("schema integrity", () => {
     const actual = verifySchemaIntegrity().actual;
     const bad = compareSchemaChecksum("0".repeat(64), actual);
     expect(bad.ok).toBe(false);
-    expect(bad.message).toBe("Official AY 2026–27 ITR-4 schema integrity verification failed. JSON generation is disabled.");
+    expect(bad.message).toBe("The official AY 2026–27 ITR-4 schema could not be verified. JSON generation has been disabled.");
   });
 });
 

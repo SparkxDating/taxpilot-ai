@@ -27,8 +27,8 @@ export function generateITRJson(data: NormalizedReturn, opts?: { generatedAt?: D
   if (!gate.integrity.ok) {
     errors.push({
       severity: "ERROR",
-      message: "Official AY 2026–27 ITR-4 schema integrity verification failed. JSON generation is disabled.",
-      field: "schema",
+      message: "The official AY 2026–27 ITR-4 schema could not be verified. JSON generation has been disabled.",
+      field: "OFFICIAL_SCHEMA_INTEGRITY_FAILURE",
     });
   }
   for (const c of gate.completeness) {

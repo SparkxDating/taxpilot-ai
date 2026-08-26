@@ -33,7 +33,10 @@ export default async function ValidatePage({ params }: { params: Promise<{ id: s
         <h1 className="text-3xl">Return check</h1>
         {generated?.layers ? (
           <Card className="mt-4 sans text-sm space-y-1">
-            <p>Schema integrity: {generated.layers.schemaIntegrity}</p>
+            <p>
+              Schema integrity: {generated.layers.schemaIntegrity}
+              {generated.layers.schemaIntegrity === "FAIL" ? " — ❌ Official schema verification failed" : ""}
+            </p>
             <p>Data completeness: {generated.layers.dataCompleteness}</p>
             <p>Eligibility: {generated.layers.eligibility}</p>
             <p>Business rules: {generated.layers.businessRules}</p>

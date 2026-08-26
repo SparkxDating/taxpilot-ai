@@ -11,6 +11,7 @@
 | AssessmentYear in JSON | `2026` (4 characters) |
 | Draft | JSON Schema draft-04 |
 | URL | https://www.incometax.gov.in/iec/foportal/sites/default/files/2026-07/ITR-4_2026_Main_V1.1.json |
+| SHA-256 | `5e9af50083ad92faa684a02ae51693189b43df16b92c1da5a184026fc5cdc2ac` (verified vs live ITD file on 2026-08-27) |
 
 Companion documents (linked in `metadata.json`):
 

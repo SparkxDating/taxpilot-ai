@@ -6,6 +6,7 @@ import { validateReturn } from "./validation";
 import { determineItrType } from "@/lib/tax-rules/ay2026_27/eligibility";
 import { json } from "@/lib/utils";
 import { nextJsonFileStatuses } from "@/lib/json/lifecycle";
+import { verifySchemaIntegrity } from "@/lib/itr-json/schemaIntegrity";
 
 export async function recomputeReturn(returnId: string) {
   const data = await loadNormalized(returnId);
@@ -114,8 +115,10 @@ export async function recomputeReturn(returnId: string) {
   if (life.changed) {
     await prisma.iTRJsonFile.updateMany({ where: { returnId, status: "CURRENT" }, data: { status: "SUPERSEDED" } });
   }
+  const integrity = verifySchemaIntegrity();
   let status = "IN_PROGRESS";
-  if (hasError) status = "VALIDATION_FAILED";
+  if (!integrity.ok) status = "VALIDATION_FAILED";
+  else if (hasError) status = "VALIDATION_FAILED";
   else if (completion >= 70) status = "READY_FOR_JSON";
   else if (issues.some((i) => i.severity === "WARNING")) status = "NEEDS_REVIEW";
   const updated = await prisma.taxReturn.update({

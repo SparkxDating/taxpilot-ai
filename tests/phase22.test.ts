@@ -5,7 +5,13 @@ import { tmpdir } from "os";
 import { fixtures } from "@/lib/tax/fixtures";
 import { TaxEngine } from "@/lib/tax/engine";
 import { generateITRJson } from "@/lib/itr-json/mapper";
-import { compareSchemaChecksum, verifySchemaFile, verifySchemaIntegrity } from "@/lib/itr-json/schemaIntegrity";
+import {
+  compareSchemaChecksum,
+  INTEGRITY_FAIL_MESSAGE,
+  verifySchemaFile,
+  verifySchemaIntegrity,
+  verifySchemaIntegrityFrom,
+} from "@/lib/itr-json/schemaIntegrity";
 import { evaluate80D } from "@/lib/tax-engine/ay2026_27/deduction80d";
 import { evaluateDeductions } from "@/lib/tax-engine/ay2026_27/deductions";
 import { ageAtFinancialYearEnd, ageCategoryFromDob } from "@/lib/tax-engine/ay2026_27/age";
@@ -37,7 +43,7 @@ describe("schema integrity", () => {
   it("FAIL: incorrect metadata checksum", () => {
     const r = compareSchemaChecksum("0".repeat(64), verifySchemaIntegrity().actual);
     expect(r.ok).toBe(false);
-    expect(r.message).toContain("JSON generation is disabled");
+    expect(r.message).toBe(INTEGRITY_FAIL_MESSAGE);
   });
 
   it("FAIL: modified schema bytes", () => {
@@ -52,8 +58,18 @@ describe("schema integrity", () => {
   it("FAIL: missing schema", () => {
     const r = verifySchemaFile(join(tmpdir(), "no-such-itr4-schema.json"), String(metadata.sha256));
     expect(r.ok).toBe(false);
-    expect(r.missing).toBe(true);
-    expect(r.message).toBe("Official AY 2026–27 ITR-4 schema integrity verification failed. JSON generation is disabled.");
+    expect(r.missing).toBe("schema");
+    expect(r.message).toBe(INTEGRITY_FAIL_MESSAGE);
+  });
+
+  it("FAIL: missing metadata", () => {
+    const r = verifySchemaIntegrityFrom(
+      join(process.cwd(), "src/lib/itr-json/schemas/ay2026_27/itr4/schema.json"),
+      join(tmpdir(), "no-such-itr4-metadata.json"),
+    );
+    expect(r.ok).toBe(false);
+    expect(r.missing).toBe("metadata");
+    expect(r.message).toBe(INTEGRITY_FAIL_MESSAGE);
   });
 });
 
@@ -309,5 +325,29 @@ describe("refund / mapping / json version", () => {
     const a = generateITRJson(fixtures.simpleBusiness, { generatedAt: frozen });
     const b = generateITRJson({ ...fixtures.simpleBusiness, city: "Mysuru" }, { generatedAt: frozen });
     expect(nextJsonFileStatuses(a.digest, b.digest).previous).toBe("SUPERSEDED");
+  });
+});
+
+function containsUndefined(value: unknown): boolean {
+  if (value === undefined) return true;
+  if (Array.isArray(value)) return value.some(containsUndefined);
+  if (value && typeof value === "object") return Object.values(value as Record<string, unknown>).some(containsUndefined);
+  return false;
+}
+
+describe("official production schema and JSON shape", () => {
+  it("production JSON uses OfficialSchema and contains no undefined", () => {
+    const g = generateITRJson(fixtures.simpleBusiness, { generatedAt: frozen });
+    expect(g.valid).toBe(true);
+    expect(g.json).not.toBeNull();
+    expect(g.official.schemaMode).toBe("OfficialSchema");
+    expect(g.official.schemaMode).not.toBe("DevelopmentSchema");
+    expect(containsUndefined(g.json)).toBe(false);
+  });
+
+  it("missing DOB blocks JSON", () => {
+    const g = generateITRJson({ ...fixtures.simpleBusiness, dateOfBirth: undefined }, { generatedAt: frozen });
+    expect(g.json).toBeNull();
+    expect(g.blocked).toBe(true);
   });
 });

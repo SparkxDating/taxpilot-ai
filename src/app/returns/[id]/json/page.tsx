@@ -22,7 +22,13 @@ export default async function JsonPage({ params }: { params: Promise<{ id: strin
   const preview = data ? generateITRJson(data, { returnId: id }) : null;
   const current = ret.jsonFiles.find((f) => f.status === "CURRENT");
   const errors = ret.validationErrors.filter((e) => e.severity === "ERROR");
-  const canGen = ret.itrType === "ITR-4" && errors.length === 0 && preview?.official.valid && preview.valid;
+  const integrityFail = preview?.layers.schemaIntegrity === "FAIL";
+  const canGen =
+    ret.itrType === "ITR-4" &&
+    errors.length === 0 &&
+    preview?.official.valid &&
+    preview.valid &&
+    !integrityFail;
   return (
     <div>
       <SiteHeader authed name={session.name} />
@@ -42,13 +48,20 @@ export default async function JsonPage({ params }: { params: Promise<{ id: strin
               <p>Status: {current ? "JSON Generated" : ret.status}</p>
             </Card>
             <div className="mt-4 space-y-2">
-              <p>{preview?.official.valid ? "✓ Official schema validation passed" : "✕ Official schema validation failed"}</p>
+              <p>
+                {integrityFail
+                  ? "❌ Official schema verification failed"
+                  : preview?.official.valid
+                    ? "✓ Official schema validation passed"
+                    : "✕ Official schema validation failed"}
+              </p>
               <p>{errors.length === 0 ? "✓ Business validation passed" : "✕ Business validation failed"}</p>
               <p>{preview?.calc ? "✓ Tax calculation validation passed" : "✕ Tax calculation missing"}</p>
             </div>
             {!canGen ? (
               <Card className="mt-4">
                 <p>Unable to generate the return. Please correct the highlighted issues.</p>
+                {integrityFail ? <p className="sans mt-2 text-sm">❌ Official schema verification failed</p> : null}
                 {preview?.errors.some((e) => e.field === "UNSUPPORTED_INTEREST_CALCULATION") ? (
                   <p className="sans mt-2 text-sm">Interest calculation requires additional information.</p>
                 ) : null}

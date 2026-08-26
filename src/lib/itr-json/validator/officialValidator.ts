@@ -26,7 +26,7 @@ export function validateITR4Json(json: unknown, assessmentYear: string): Officia
           field: "schema",
           keyword: "integrity",
           message: integrity.message,
-          explanation: "Official AY 2026–27 ITR-4 schema integrity verification failed. JSON generation is disabled.",
+          explanation: "The official AY 2026–27 ITR-4 schema could not be verified. JSON generation has been disabled.",
         },
       ],
       warnings: [],

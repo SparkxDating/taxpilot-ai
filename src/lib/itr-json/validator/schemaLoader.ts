@@ -1,7 +1,7 @@
-import { createHash } from "crypto";
 import { readFileSync } from "fs";
 import path from "path";
 import metadata from "@/lib/itr-json/schemas/ay2026_27/itr4/metadata.json";
+import { schemaFileSha256 } from "@/lib/itr-json/schemaIntegrity";
 
 export type SchemaKind = "OfficialSchema" | "DevelopmentSchema";
 
@@ -14,12 +14,16 @@ export function loadOfficialItr4Schema() {
     kind: "OfficialSchema" as const,
     schema: JSON.parse(raw) as object,
     version: metadata.schemaVersion as string,
-    sha256: createHash("sha256").update(raw).digest("hex"),
+    sha256: schemaFileSha256(OFFICIAL),
     metadata,
   };
 }
 
+/** Never used by production JSON generation or official validation. */
 export function loadDevelopmentAdapterSchema() {
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("Development adapter schema is not permitted in production.");
+  }
   const raw = readFileSync(DEVELOPMENT, "utf8");
   return {
     kind: "DevelopmentSchema" as const,
