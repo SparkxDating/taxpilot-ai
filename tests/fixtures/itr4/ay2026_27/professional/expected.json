@@ -1,0 +1,168 @@
+{
+  "ITR": {
+    "ITR4": {
+      "CreationInfo": {
+        "SWVersionNo": "1.0",
+        "SWCreatedBy": "SW00000001",
+        "JSONCreatedBy": "SW00000001",
+        "JSONCreationDate": "2026-08-26",
+        "IntermediaryCity": "Bengaluru",
+        "Digest": "-"
+      },
+      "Form_ITR4": {
+        "FormName": "ITR-4",
+        "Description": "For Indl, HUF, Firms (other than LLP) having Presumptive Income",
+        "AssessmentYear": "2026",
+        "SchemaVer": "Ver1.0",
+        "FormVer": "Ver1.0"
+      },
+      "PersonalInfo": {
+        "AssesseeName": {
+          "FirstName": "Pooja",
+          "SurNameOrOrgName": "Designer"
+        },
+        "PAN": "ABCDE1234F",
+        "Address": {
+          "ResidenceNo": "12 MG Road",
+          "LocalityOrArea": "Ashok Nagar",
+          "CityOrTownOrDistrict": "Bengaluru",
+          "StateCode": "29",
+          "CountryCode": "91",
+          "PinCode": 560001,
+          "CountryCodeMobile": 91,
+          "MobileNo": 9876543210,
+          "EmailAddress": "demo@taxpilot.local"
+        },
+        "SecondaryAdd": "N",
+        "DOB": "1990-01-15",
+        "EmployerCategory": "NA",
+        "Status": "I"
+      },
+      "FilingStatus": {
+        "ReturnFileSec": 11,
+        "Form10IEAEarlierAYOldRegime": "NA",
+        "AsseseeRepFlg": "N",
+        "ItrFilingDueDate": "2026-08-31"
+      },
+      "IncomeDeductions": {
+        "IncomeFromBusinessProf": 1400000,
+        "GrossSalary": 0,
+        "NetSalary": 0,
+        "DeductionUs16": 0,
+        "DeductionUs16ia": 0,
+        "IncomeFromSal": 0,
+        "TotalIncomeChargeableUnHP": 0,
+        "IncomeOthSrc": 0,
+        "GrossTotIncome": 1400000,
+        "GrossTotIncomeIncLTCG112A": 1400000,
+        "UsrDeductUndChapVIA": {
+          "Section80C": 0,
+          "Section80CCC": 0,
+          "Section80CCDEmployeeOrSE": 0,
+          "Section80CCD1B": 0,
+          "Section80CCDEmployer": 0,
+          "Section80D": 0,
+          "Section80DD": 0,
+          "Section80DDB": 0,
+          "Section80E": 0,
+          "Section80EE": 0,
+          "Section80EEA": 0,
+          "Section80EEB": 0,
+          "Section80G": 0,
+          "Section80GG": 0,
+          "Section80GGC": 0,
+          "Section80U": 0,
+          "Section80TTA": 0,
+          "Section80TTB": 0,
+          "AnyOthSec80CCH": 0,
+          "TotalChapVIADeductions": 0
+        },
+        "DeductUndChapVIA": {
+          "Section80C": 0,
+          "Section80CCC": 0,
+          "Section80CCDEmployeeOrSE": 0,
+          "Section80CCD1B": 0,
+          "Section80CCDEmployer": 0,
+          "Section80D": 0,
+          "Section80DD": 0,
+          "Section80DDB": 0,
+          "Section80E": 0,
+          "Section80EE": 0,
+          "Section80EEA": 0,
+          "Section80EEB": 0,
+          "Section80G": 0,
+          "Section80GG": 0,
+          "Section80GGC": 0,
+          "Section80U": 0,
+          "Section80TTA": 0,
+          "Section80TTB": 0,
+          "AnyOthSec80CCH": 0,
+          "TotalChapVIADeductions": 0
+        },
+        "TotalIncome": 1400000
+      },
+      "TaxComputation": {
+        "TotalTaxPayable": 90000,
+        "Rebate87A": 0,
+        "TaxPayableOnRebate": 90000,
+        "EducationCess": 3600,
+        "GrossTaxLiability": 93600,
+        "NetTaxLiability": 93600,
+        "IntrstPay": {
+          "IntrstPayUs234A": 0,
+          "IntrstPayUs234B": 0,
+          "IntrstPayUs234C": 0,
+          "LateFilingFee234F": 0
+        },
+        "TotTaxPlusIntrstPay": 93600
+      },
+      "TaxPaid": {
+        "TaxesPaid": {
+          "AdvanceTax": 0,
+          "TDS": 0,
+          "TCS": 0,
+          "SelfAssessmentTax": 0,
+          "TotalTaxesPaid": 0
+        },
+        "BalTaxPayable": 93600
+      },
+      "Refund": {
+        "RefundDue": 0,
+        "BankAccountDtls": {
+          "AddtnlBankDetails": [
+            {
+              "IFSCCode": "HDFC0001234",
+              "BankName": "HDFC Bank",
+              "BankAccountNo": "12345678901",
+              "AccountType": "SB",
+              "UseForRefund": "true"
+            }
+          ]
+        }
+      },
+      "Verification": {
+        "Declaration": {
+          "AssesseeVerName": "Pooja Designer",
+          "FatherName": "Ramesh Taxpayer",
+          "AssesseeVerPAN": "ABCDE1234F"
+        },
+        "Capacity": "S",
+        "Place": "Bengaluru"
+      },
+      "ScheduleBP": {
+        "NatOfBus44ADA": [
+          {
+            "NameOfBusiness": "Design",
+            "CodeADA": "16005"
+          }
+        ],
+        "PersumptiveInc44ADA": {
+          "GrsReceipt": 2800000,
+          "GrsTrnOverBank44ADA": 2750000,
+          "GrsTotalTrnOverInCash44ADA": 50000,
+          "TotPersumptiveInc44ADA": 1400000
+        }
+      }
+    }
+  }
+}

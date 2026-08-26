@@ -31,6 +31,17 @@ export default async function ValidatePage({ params }: { params: Promise<{ id: s
       <div className="mx-auto max-w-3xl px-6 py-8">
         <ReturnNav id={id} current="validate" />
         <h1 className="text-3xl">Return check</h1>
+        {generated?.layers ? (
+          <Card className="mt-4 sans text-sm space-y-1">
+            <p>Schema integrity: {generated.layers.schemaIntegrity}</p>
+            <p>Data completeness: {generated.layers.dataCompleteness}</p>
+            <p>Eligibility: {generated.layers.eligibility}</p>
+            <p>Business rules: {generated.layers.businessRules}</p>
+            <p>Tax calculation: {generated.layers.taxCalculation}</p>
+            <p>Official schema: {generated.layers.schema}</p>
+            <p>Unsupported scenarios: {generated.layers.unsupported}</p>
+          </Card>
+        ) : null}
         <div className="mt-6 space-y-2">
           {groups.map(([label, ...fields]) => {
             const hits = ret.validationErrors.filter((e) => fields.includes(e.field) || e.section === label);

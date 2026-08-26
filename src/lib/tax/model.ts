@@ -20,7 +20,7 @@ export type NormalizedReturn = {
   assessmentYear: string;
   itrType: "ITR-4" | "ITR-3" | "UNDETERMINED";
   taxpayerType: "INDIVIDUAL" | "HUF" | "FIRM";
-  residentialStatus: "RESIDENT" | "RNOR" | "NRI";
+  residentialStatus: "RESIDENT" | "RNOR" | "NRI" | "";
   pan: string;
   name: string;
   firstName?: string;

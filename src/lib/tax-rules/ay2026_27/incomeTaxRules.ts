@@ -1,3 +1,5 @@
+import { roundTaxAmount } from "@/lib/tax-engine/ay2026_27/rounding";
+
 /**
  * AY 2026-27 (FY 2025-26) tax rates.
  * Source: Income Tax Department tax-rates page and ITD ITR-4 FAQs (reviewed Aug 2026).
@@ -61,5 +63,5 @@ export function taxOnSlabs(income: number, slabs: readonly { upTo: number; rate:
     previous = slab.upTo;
     if (income <= slab.upTo) break;
   }
-  return Math.round(tax);
+  return roundTaxAmount(tax);
 }

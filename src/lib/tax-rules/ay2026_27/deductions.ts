@@ -4,7 +4,10 @@ export const STANDARD_DEDUCTION_OLD = 50_000;
 
 export const LIMITS = {
   "80C": 150_000,
+  "80CCC": 150_000,
+  "80CCD(1)": 150_000,
   "80CCD(1B)": 50_000,
+  "80D": 100_000,
   "80D_SELF": 25_000,
   "80D_SELF_SENIOR": 50_000,
   "80TTA": 10_000,

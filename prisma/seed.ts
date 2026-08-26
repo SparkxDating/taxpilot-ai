@@ -4,6 +4,13 @@ import bcrypt from "bcryptjs";
 const prisma = new PrismaClient();
 
 async function main() {
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("Refusing to seed demo taxpayers in production.");
+  }
+  if (process.env.DEMO_MODE !== "true") {
+    console.log("Seed skipped. Set DEMO_MODE=true to load isolated demo users. Demo data never populates a real return.");
+    return;
+  }
   const passwordHash = await bcrypt.hash("password123", 12);
   const demo = await prisma.user.upsert({
     where: { email: "demo@taxpilot.local" },
@@ -28,7 +35,7 @@ async function main() {
       profile: { create: {} },
     },
   });
-  console.log("Seeded demo@taxpilot.local / password123 and admin@taxpilot.local / password123", demo.email);
+  console.log("Seeded isolated demo users only (DEMO_MODE=true):", demo.email);
 }
 
 main().finally(() => prisma.$disconnect());

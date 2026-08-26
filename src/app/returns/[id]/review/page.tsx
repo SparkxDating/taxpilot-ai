@@ -60,9 +60,23 @@ export default async function ReviewPage({ params }: { params: Promise<{ id: str
         <ReturnNav id={id} current="review" />
         <h1 className="text-3xl">Return review</h1>
         <p className="sans mt-2 text-sm text-[#5c6773]">
-          Regime: {ret.taxRegime} · Taxable income {inr(calc.taxableIncome || 0)} · Eligible deductions {inr(calc.deductions || 0)} · Final tax{" "}
-          {inr(calc.totalTax || 0)}
+          Selected regime: {ret.taxRegime === "OLD" ? "Old regime" : "New regime"} · Taxable income {inr(calc.taxableIncome || 0)} · Eligible
+          deductions {inr(calc.deductions || 0)} · Final tax {inr(calc.totalTax || 0)}
         </p>
+        <Card className="mt-4 sans text-sm space-y-1">
+          <p>Normal-rate taxable income: {inr(calc.normalRateIncome || 0)}</p>
+          <p>Special-rate taxable income (s.112A): {inr(calc.specialRateIncome || 0)}</p>
+          <p>Tax on normal-rate income: {inr(calc.taxBeforeRebate || 0)}</p>
+          <p>Tax on special-rate income: {inr(calc.taxOnSpecialRate || 0)}</p>
+          <p>Rebate u/s 87A: {inr(calc.rebate || 0)}</p>
+          <p>Surcharge: {inr(calc.surcharge || 0)}</p>
+          <p>Cess: {inr(calc.cess || 0)}</p>
+          <p>Total tax: {inr(calc.totalTax || 0)}</p>
+          <p>
+            Settlement: {calc.settlement?.status || (calc.isRefund ? "REFUND" : calc.totalTax ? "TAX_PAYABLE" : "ZERO")}{" "}
+            {inr(calc.settlement?.amount ?? Math.abs(calc.refundOrPayable || 0))}
+          </p>
+        </Card>
         <div className="mt-6 space-y-2">
           {sections.map(([label, href, detail]) => {
             const m = mark(label);

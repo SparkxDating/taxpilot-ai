@@ -1,5 +1,7 @@
 import type { NormalizedReturn } from "./model";
 import { businessValidate, type BusinessIssue } from "@/lib/validation/businessRules";
+import { completenessValidate } from "@/lib/validation/completeness";
+import { detectUnsupported } from "@/lib/itr-rules/ay2026_27/unsupported";
 import { validateITR4Json } from "@/lib/itr-json/validator/officialValidator";
 import { generateITRJson } from "@/lib/itr-json/mapper";
 
@@ -28,8 +30,27 @@ function toIssue(b: BusinessIssue): Issue {
 }
 
 export function validateReturn(data: NormalizedReturn, returnId?: string) {
-  const issues = businessValidate(data, returnId).map(toIssue);
-  return { issues, level1: issues.filter((i) => i.level === 1), level2: issues.filter((i) => i.level === 2) };
+  const completeness = completenessValidate(data, returnId).map(toIssue);
+  const business = businessValidate(data, returnId).map(toIssue);
+  const unsupported = detectUnsupported(data, returnId).map((u) => ({
+    id: u.code,
+    level: 2 as const,
+    severity: u.severity,
+    section: "Unsupported scenario",
+    field: u.code,
+    message: u.message,
+    suggestion: "Do not generate filing JSON until this scenario is supported or removed.",
+    href: u.fixRoute,
+  }));
+  const issues = [...completeness, ...business, ...unsupported];
+  const seen = new Set<string>();
+  const deduped = issues.filter((i) => {
+    const k = `${i.field}:${i.message}`;
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+  return { issues: deduped, level1: deduped.filter((i) => i.level === 1), level2: deduped.filter((i) => i.level === 2) };
 }
 
 export function validateAgainstOfficialSchema(json: unknown, assessmentYear: string, itrType: string) {

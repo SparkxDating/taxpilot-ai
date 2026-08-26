@@ -1,9 +1,11 @@
+import { createHash } from "crypto";
 import { prisma } from "@/lib/db";
 import { loadNormalized } from "./load";
 import { TaxEngine } from "./engine";
 import { validateReturn } from "./validation";
 import { determineItrType } from "@/lib/tax-rules/ay2026_27/eligibility";
 import { json } from "@/lib/utils";
+import { nextJsonFileStatuses } from "@/lib/json/lifecycle";
 
 export async function recomputeReturn(returnId: string) {
   const data = await loadNormalized(returnId);
@@ -20,7 +22,9 @@ export async function recomputeReturn(returnId: string) {
   });
   const eligibility = determineItrType({
     taxpayerType: ret.taxpayerType as "INDIVIDUAL" | "HUF" | "FIRM",
-    residentialStatus: (ret.user.profile?.residentialStatus as "RESIDENT" | "RNOR" | "NRI") || "RESIDENT",
+    residentialStatus: (["RESIDENT", "RNOR", "NRI"].includes(ret.user.profile?.residentialStatus || "")
+      ? (ret.user.profile!.residentialStatus as "RESIDENT" | "RNOR" | "NRI")
+      : ""),
     isLlp: false,
     isDirector: directorAnswer?.value === "Yes",
     sources,
@@ -47,7 +51,9 @@ export async function recomputeReturn(returnId: string) {
   });
   const eligWithIncome = determineItrType({
     taxpayerType: ret.taxpayerType as "INDIVIDUAL" | "HUF" | "FIRM",
-    residentialStatus: (ret.user.profile?.residentialStatus as "RESIDENT" | "RNOR" | "NRI") || "RESIDENT",
+    residentialStatus: (["RESIDENT", "RNOR", "NRI"].includes(ret.user.profile?.residentialStatus || "")
+      ? (ret.user.profile!.residentialStatus as "RESIDENT" | "RNOR" | "NRI")
+      : ""),
     isLlp: false,
     isDirector: directorAnswer?.value === "Yes",
     sources,
@@ -103,8 +109,9 @@ export async function recomputeReturn(returnId: string) {
   completion = Math.min(100, completion);
   const itrType = eligWithIncome.recommended === "UNSUPPORTED" ? "ITR-3" : eligWithIncome.recommended;
   const hasError = issues.some((i) => i.severity === "ERROR");
-  const fingerprint = JSON.stringify({ tax: calc.totalTax, ti: calc.taxableIncome, gti: calc.grossTotalIncome });
-  if (ret.dataFingerprint && ret.dataFingerprint !== fingerprint) {
+  const fingerprint = createHash("sha256").update(JSON.stringify(data)).digest("hex");
+  const life = nextJsonFileStatuses(ret.dataFingerprint || null, fingerprint);
+  if (life.changed) {
     await prisma.iTRJsonFile.updateMany({ where: { returnId, status: "CURRENT" }, data: { status: "SUPERSEDED" } });
   }
   let status = "IN_PROGRESS";

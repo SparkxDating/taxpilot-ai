@@ -37,10 +37,17 @@ export default async function TdsPage({ params }: { params: Promise<{ id: string
             <Input name="advanceTax" type="number" defaultValue={adv?.amount || ""} />
             <Label>Self-assessment tax</Label>
             <Input name="selfAsst" type="number" defaultValue={sa?.amount || ""} />
+            <Label>Bank name</Label>
+            <Input name="bankName" defaultValue={b?.bankName} required />
             <Label>Primary bank IFSC</Label>
-            <Input name="ifsc" placeholder="HDFC0001234" defaultValue={b?.ifsc} required />
+            <Input name="ifsc" placeholder="11-character IFSC" defaultValue={b?.ifsc} required />
             <Label>Account number</Label>
             <Input name="accountNumber" defaultValue={b?.accountNumber} required />
+            <Label>Account type</Label>
+            <select name="accountType" defaultValue={b?.accountType || "SB"} className="sans w-full rounded-md border px-3 py-2 text-sm">
+              <option value="SB">Savings</option>
+              <option value="CA">Current</option>
+            </select>
             <Button>Save and run checks</Button>
           </form>
         </Card>

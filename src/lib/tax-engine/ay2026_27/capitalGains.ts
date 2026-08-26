@@ -31,7 +31,7 @@ export function computeCapitalGains(lines: CapitalGainLine[]) {
   );
   const taxable112A = Math.max(0, ltcg112A - ITR4_112A_CAP);
   const tax112A = roundTaxAmount(taxable112A * RATE_112A);
-  const unsupported = other.filter((l) => l.amount > 0);
+  const unsupported = other.filter((l) => l.amount !== 0);
   return {
     ltcg112A,
     taxable112A,

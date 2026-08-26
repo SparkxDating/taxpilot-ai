@@ -1,0 +1,34 @@
+{
+  "regime": "NEW",
+  "salaryIncome": 425000,
+  "businessIncome": 270000,
+  "professionIncome": 0,
+  "housePropertyIncome": 0,
+  "otherSources": 0,
+  "capitalGains": 0,
+  "normalRateIncome": 695000,
+  "specialRateIncome": 0,
+  "taxBeforeRebate": 14750,
+  "taxOnSpecialRate": 0,
+  "rebate": 14750,
+  "surcharge": 0,
+  "cess": 0,
+  "totalTax": 0,
+  "tds": 40000,
+  "tcs": 0,
+  "prepaid": 40000,
+  "settlement": {
+    "status": "REFUND",
+    "amount": 40000,
+    "signed": 40000,
+    "breakdown": {
+      "totalTax": 0,
+      "prepaid": 40000,
+      "tds": 40000,
+      "tcs": 0,
+      "advanceTax": 0,
+      "selfAssessmentTax": 0
+    }
+  },
+  "flags": []
+}

@@ -1,0 +1,57 @@
+{
+  "assessmentYear": "2026-27",
+  "itrType": "ITR-4",
+  "taxpayerType": "INDIVIDUAL",
+  "residentialStatus": "RESIDENT",
+  "pan": "ABCDE1234F",
+  "name": "Imran Trader",
+  "fatherName": "Ramesh Taxpayer",
+  "email": "demo@taxpilot.local",
+  "phone": "9876543210",
+  "dateOfBirth": "1990-01-15",
+  "addressLine1": "12 MG Road",
+  "locality": "Ashok Nagar",
+  "city": "Bengaluru",
+  "state": "Karnataka",
+  "pincode": "560001",
+  "verificationPlace": "Bengaluru",
+  "regime": "NEW",
+  "salary": {
+    "gross": 0,
+    "exemptions": 0,
+    "tds": 0,
+    "employerName": "",
+    "employerTan": ""
+  },
+  "business": {
+    "section": "44AD",
+    "turnover": 4500000,
+    "digitalReceipts": 4500000,
+    "cashReceipts": 0,
+    "declaredIncome": 0,
+    "nature": "Trading",
+    "natureCode": "09027"
+  },
+  "profession": {
+    "section": "44ADA",
+    "grossReceipts": 0,
+    "cashReceipts": 0,
+    "declaredIncome": 0,
+    "profession": ""
+  },
+  "houseProperties": [],
+  "otherIncome": [],
+  "capitalGains": [],
+  "deductions": [],
+  "tds": [],
+  "taxPayments": [],
+  "bankAccounts": [
+    {
+      "ifsc": "HDFC0001234",
+      "accountNumber": "12345678901",
+      "isPrimary": true,
+      "bankName": "HDFC Bank",
+      "accountType": "SB"
+    }
+  ]
+}

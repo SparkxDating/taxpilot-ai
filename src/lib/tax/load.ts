@@ -27,7 +27,9 @@ export async function loadNormalized(returnId: string, userId?: string): Promise
     assessmentYear: ret.assessmentYear,
     itrType: (ret.itrType as NormalizedReturn["itrType"]) || "UNDETERMINED",
     taxpayerType: ret.taxpayerType as NormalizedReturn["taxpayerType"],
-    residentialStatus: (ret.user.profile?.residentialStatus as NormalizedReturn["residentialStatus"]) || "RESIDENT",
+    residentialStatus: (["RESIDENT", "RNOR", "NRI"].includes(ret.user.profile?.residentialStatus || "")
+      ? (ret.user.profile!.residentialStatus as NormalizedReturn["residentialStatus"])
+      : ""),
     pan: ret.user.profile?.pan || "",
     name: ret.user.name,
     fatherName: ret.user.profile?.fatherName || "",
@@ -55,6 +57,7 @@ export async function loadNormalized(returnId: string, userId?: string): Promise
       cashReceipts: biz?.cashReceipts || 0,
       declaredIncome: biz?.declaredIncome || 0,
       nature: biz?.nature || "",
+      natureCode: biz?.natureCode || undefined,
     },
     profession: {
       section: (prof?.section as "44ADA" | "BOOKS") || "44ADA",
@@ -62,6 +65,7 @@ export async function loadNormalized(returnId: string, userId?: string): Promise
       cashReceipts: prof?.cashReceipts || 0,
       declaredIncome: prof?.declaredIncome || 0,
       profession: prof?.profession || "",
+      natureCode: prof?.natureCode || undefined,
     },
     houseProperties: ret.houseProperties.map((h) => ({
       occupancy: h.occupancy as "SELF_OCCUPIED" | "LET_OUT",

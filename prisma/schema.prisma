@@ -41,7 +41,7 @@ model Profile {
   dateOfBirth     DateTime?
   gender          String   @default("")
   fatherName      String   @default("")
-  residentialStatus String @default("RESIDENT")
+  residentialStatus String @default("")
   phone           String   @default("")
   addressLine1    String   @default("")
   addressLine2    String   @default("")
@@ -183,6 +183,7 @@ model BusinessIncome {
   returnId         String
   section          String   @default("44AD")
   nature           String   @default("")
+  natureCode       String   @default("")
   turnover         Int      @default(0)
   digitalReceipts  Int      @default(0)
   cashReceipts     Int      @default(0)
@@ -196,6 +197,7 @@ model ProfessionalIncome {
   returnId         String
   section          String   @default("44ADA")
   profession       String   @default("")
+  natureCode       String   @default("")
   grossReceipts    Int      @default(0)
   cashReceipts     Int      @default(0)
   presumptiveIncome Int    @default(0)

@@ -9,9 +9,9 @@ export async function audit(input: {
   metadata?: Record<string, unknown>;
 }) {
   const meta = { ...(input.metadata || {}) };
-  delete meta.pan;
-  delete meta.aadhaar;
-  delete meta.password;
+  for (const k of ["pan", "aadhaar", "password", "accountNumber", "ifsc", "dob", "dateOfBirth", "token", "secret"]) {
+    delete meta[k];
+  }
   await prisma.auditLog.create({
     data: {
       userId: input.userId || null,

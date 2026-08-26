@@ -40,28 +40,29 @@ const STATES: Record<string, string> = {
   "LADAKH": "37",
 };
 
-export function stateCodeOf(state?: string) {
-  if (!state) return "99";
+export function stateCodeOf(state?: string): string | null {
+  if (!state) return null;
   const key = state.trim().toUpperCase();
   if (/^\d{2}$/.test(key)) return key;
-  return STATES[key] || "99";
+  return STATES[key] || null;
 }
 
 export function splitName(name: string) {
   const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return { first: "NA", last: "NA" };
+  if (parts.length === 0) return { first: "", last: "" };
   if (parts.length === 1) return { first: parts[0].slice(0, 25), last: parts[0].slice(0, 75) };
   return { first: parts[0].slice(0, 25), last: parts.slice(1).join(" ").slice(0, 75) };
 }
 
-export function mobileInt(phone?: string) {
+export function mobileInt(phone?: string): number | null {
   const d = (phone || "").replace(/\D/g, "").slice(-10);
+  if (d.length !== 10) return null;
   const n = Number(d);
-  return Number.isFinite(n) && d.length === 10 ? n : 9999999999;
+  return Number.isFinite(n) ? n : null;
 }
 
-export function pinInt(pin?: string) {
+export function pinInt(pin?: string): number | null {
   const n = Number((pin || "").replace(/\D/g, "").slice(0, 6));
   if (n >= 100000 && n <= 999999) return n;
-  return 560001;
+  return null;
 }

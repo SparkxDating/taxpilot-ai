@@ -63,6 +63,16 @@ export function businessValidate(data: NormalizedReturn, returnId = ""): Busines
     if (!p.withinLimit) {
       push({ id: "ITR4_PR_001", severity: "ERROR", field: "grossReceipts", section: "Profession", message: "Professional receipts exceed s.44ADA limits.", explanation: "ITR-4 cannot be used for this turnover." });
     }
+    if (data.profession.declaredIncome > 0 && data.profession.declaredIncome < p.minimum) {
+      push({
+        id: "ITR4_PR_002",
+        severity: "ERROR",
+        field: "declaredIncome",
+        section: "Profession",
+        message: `Declared 44ADA income is below the prescribed ₹${p.minimum.toLocaleString("en-IN")}.`,
+        explanation: "Declare at least 50% of receipts, or maintain books (ITR-3, not yet filing-ready).",
+      });
+    }
   }
 
   const calc = TaxEngine.calculate(data);

@@ -6,6 +6,7 @@ import { ReturnNav } from "@/components/return-nav";
 import { Button, Card, Input, Label } from "@/components/ui";
 import { saveIncomeAction } from "@/app/actions";
 import { json } from "@/lib/utils";
+import { CODE_AD, CODE_ADA } from "@/lib/itr-json/ay2026_27/itr4/natureCodes";
 
 export default async function IncomePage({ params }: { params: Promise<{ id: string }> }) {
   const session = await getSession();
@@ -50,6 +51,14 @@ export default async function IncomePage({ params }: { params: Promise<{ id: str
             <Card className="space-y-2">
               <p className="font-medium">Presumptive business (44AD)</p>
               <Input name="nature" placeholder="Nature of business" defaultValue={b?.nature} />
+              <select name="natureCode" defaultValue={b?.natureCode || ""} className="sans w-full rounded-md border px-3 py-2 text-sm">
+                <option value="">Select official business code (CodeAD)</option>
+                {CODE_AD.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
               <Input name="turnover" type="number" placeholder="Turnover" defaultValue={b?.turnover || ""} />
               <Input name="digitalReceipts" type="number" placeholder="Digital receipts" defaultValue={b?.digitalReceipts || ""} />
               <Input name="cashReceipts" type="number" placeholder="Cash receipts" defaultValue={b?.cashReceipts || ""} />
@@ -60,6 +69,14 @@ export default async function IncomePage({ params }: { params: Promise<{ id: str
             <Card className="space-y-2">
               <p className="font-medium">Presumptive profession (44ADA)</p>
               <Input name="profession" placeholder="Profession" defaultValue={p?.profession} />
+              <select name="professionCode" defaultValue={p?.natureCode || ""} className="sans w-full rounded-md border px-3 py-2 text-sm">
+                <option value="">Select official profession code (CodeADA)</option>
+                {CODE_ADA.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
               <Input name="grossReceipts" type="number" placeholder="Gross receipts" defaultValue={p?.grossReceipts || ""} />
               <Input name="profCash" type="number" placeholder="Cash receipts" defaultValue={p?.cashReceipts || ""} />
               <Input name="declaredProfession" type="number" placeholder="Declared income (min 50%)" defaultValue={p?.declaredIncome || ""} />

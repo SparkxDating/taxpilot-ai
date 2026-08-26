@@ -1,0 +1,13 @@
+{
+  "ready": true,
+  "layers": {
+    "schemaIntegrity": "PASS",
+    "dataCompleteness": "PASS",
+    "eligibility": "PASS",
+    "businessRules": "PASS",
+    "taxCalculation": "PASS",
+    "unsupported": "PASS",
+    "schema": "PASS",
+    "mapping": "PASS"
+  }
+}

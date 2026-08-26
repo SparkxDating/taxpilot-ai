@@ -2,7 +2,9 @@ import type { NormalizedReturn } from "@/lib/tax/model";
 import { calculateAy2026_27, type TaxComputation } from "@/lib/tax-engine/ay2026_27";
 import { chapVia } from "./chapVia";
 import { splitName, stateCodeOf, mobileInt, pinInt } from "./stateCodes";
-import { roundTaxAmount } from "@/lib/tax-engine/ay2026_27/rounding";
+import { roundIncomeAmount, roundTaxAmount } from "@/lib/tax-engine/ay2026_27/rounding";
+import { calculateRefundOrPayable } from "@/lib/tax-engine/ay2026_27/refund";
+import { isCodeAD, isCodeADA } from "./natureCodes";
 
 export const OFFICIAL_SCHEMA_VER = "Ver1.0";
 export const SOFTWARE_ID = "SW00000001";
@@ -30,27 +32,37 @@ export function mapItr4Official(data: NormalizedReturn, generatedAt = new Date()
   const via = chapVia(calc);
   const status = data.taxpayerType === "HUF" ? "H" : data.taxpayerType === "FIRM" ? "F" : "I";
   const employerCat = data.salary.gross > 0 ? data.employerCategory || "OTH" : "NA";
-  const city = data.city || "Bengaluru";
-  const email = data.email || "noreply@taxpilot.local";
-  const payable = Math.max(0, -calc.refundOrPayable);
-  const refund = Math.max(0, calc.refundOrPayable);
+  const city = data.city || "";
+  const email = data.email || "";
+  const stateCode = stateCodeOf(data.stateCode || data.state);
+  const pin = pinInt(data.pincode);
+  const mobile = mobileInt(data.phone);
+  const settlement = calculateRefundOrPayable({
+    totalTax: calc.totalTax,
+    tds: calc.tds,
+    tcs: calc.tcs,
+    advanceTax: calc.advanceTax,
+    selfAssessmentTax: calc.selfAssessmentTax,
+  });
+  const payable = settlement.status === "TAX_PAYABLE" ? settlement.amount : 0;
+  const refund = settlement.status === "REFUND" ? settlement.amount : 0;
 
   const personal = {
     AssesseeName: { FirstName: first, SurNameOrOrgName: last },
     PAN: data.pan,
     Address: {
-      ResidenceNo: (data.addressLine1 || "NA").slice(0, 50),
-      LocalityOrArea: (data.locality || data.addressLine1 || "NA").slice(0, 50),
+      ResidenceNo: (data.addressLine1 || "").slice(0, 50),
+      LocalityOrArea: (data.locality || data.addressLine1 || "").slice(0, 50),
       CityOrTownOrDistrict: city.slice(0, 50),
-      StateCode: stateCodeOf(data.stateCode || data.state),
+      StateCode: stateCode,
       CountryCode: "91",
-      PinCode: pinInt(data.pincode),
+      PinCode: pin,
       CountryCodeMobile: 91,
-      MobileNo: mobileInt(data.phone),
+      MobileNo: mobile,
       EmailAddress: email,
     },
     SecondaryAdd: "N",
-    DOB: data.dateOfBirth && /^\d{4}-\d{2}-\d{2}$/.test(data.dateOfBirth) ? data.dateOfBirth : "1990-01-15",
+    DOB: data.dateOfBirth,
     EmployerCategory: employerCat,
     Status: status,
   };
@@ -68,7 +80,7 @@ export function mapItr4Official(data: NormalizedReturn, generatedAt = new Date()
           OthersIncDtlsOthSrc: data.otherIncome.map((o) => {
             const nature = othSrcNature(o.kind);
             const row: Record<string, unknown> = { OthSrcNatureDesc: nature, OthSrcOthAmount: o.amount };
-            if (nature === "OTH") row.OthSrcOthNatOfInc = (o.source || "Other").slice(0, 125);
+            if (nature === "OTH" && o.source) row.OthSrcOthNatOfInc = o.source.slice(0, 125);
             return row;
           }),
         }
@@ -115,7 +127,7 @@ export function mapItr4Official(data: NormalizedReturn, generatedAt = new Date()
 
   const banks = data.bankAccounts.map((b) => ({
     IFSCCode: b.ifsc,
-    BankName: (b.bankName || "BANK").slice(0, 125),
+    BankName: (b.bankName || "").slice(0, 125),
     BankAccountNo: b.accountNumber,
     AccountType: (b.accountType === "CURRENT" ? "CA" : "SB") as "SB" | "CA",
     UseForRefund: b.isPrimary ? ("true" as const) : ("false" as const),
@@ -129,11 +141,11 @@ export function mapItr4Official(data: NormalizedReturn, generatedAt = new Date()
   const verification = {
     Declaration: {
       AssesseeVerName: data.name.slice(0, 125),
-      FatherName: (data.fatherName || data.name).slice(0, 125),
+      FatherName: (data.fatherName || "").slice(0, 125),
       AssesseeVerPAN: data.pan,
     },
     Capacity: status === "H" ? "K" : status === "F" ? "P" : "S",
-    Place: (data.verificationPlace || city).slice(0, 50),
+    Place: (data.verificationPlace || data.city || "").slice(0, 50),
   };
 
   const itr4: Record<string, unknown> = {
@@ -177,7 +189,7 @@ export function mapItr4Official(data: NormalizedReturn, generatedAt = new Date()
         {
           EmployerOrDeductorOrCollectDetl: {
             TAN: data.salary.employerTan,
-            EmployerOrDeductorOrCollecterName: (data.salary.employerName || "EMPLOYER").slice(0, 75),
+            EmployerOrDeductorOrCollecterName: data.salary.employerName.slice(0, 75),
           },
           IncChrgSal: data.salary.gross,
           TotalTDSSal: data.salary.tds,
@@ -213,16 +225,16 @@ function scheduleBp(data: NormalizedReturn, calc: TaxComputation) {
     const ad = calc.presumptive.ad;
     bp.NatOfBus44AD = [
       {
-        NameOfBusiness: (data.business.nature || "Business").slice(0, 75),
-        CodeAD: data.business.natureCode || "09027",
+        NameOfBusiness: data.business.nature.slice(0, 75),
+        CodeAD: isCodeAD(data.business.natureCode) ? data.business.natureCode : undefined,
       },
     ];
     bp.PersumptiveInc44AD = {
       GrsTotalTrnOver: ad.total,
       GrsTrnOverBank: data.business.digitalReceipts,
       GrsTotalTrnOverInCash: data.business.cashReceipts,
-      PersumptiveInc44AD6Per: Math.round(data.business.digitalReceipts * 0.06),
-      PersumptiveInc44AD8Per: Math.round(data.business.cashReceipts * 0.08),
+      PersumptiveInc44AD6Per: roundIncomeAmount(data.business.digitalReceipts * 0.06),
+      PersumptiveInc44AD8Per: roundIncomeAmount(data.business.cashReceipts * 0.08),
       TotPersumptiveInc44AD: ad.income,
     };
   }
@@ -230,8 +242,8 @@ function scheduleBp(data: NormalizedReturn, calc: TaxComputation) {
     const ada = calc.presumptive.ada;
     bp.NatOfBus44ADA = [
       {
-        NameOfBusiness: (data.profession.profession || "Profession").slice(0, 75),
-        CodeADA: data.profession.natureCode || "16005",
+        NameOfBusiness: data.profession.profession.slice(0, 75),
+        CodeADA: isCodeADA(data.profession.natureCode) ? data.profession.natureCode : undefined,
       },
     ];
     bp.PersumptiveInc44ADA = {

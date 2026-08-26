@@ -28,32 +28,41 @@ export default async function ProfilePage({ params }: { params: Promise<{ id: st
             </div>
             <div>
               <Label>PAN</Label>
-              <Input name="pan" defaultValue={profile?.pan} placeholder="ABCDE1234F" required />
+              <Input name="pan" defaultValue={profile?.pan} placeholder="AAAAA9999A" required />
             </div>
             <div>
               <Label>Father&apos;s name</Label>
-              <Input name="fatherName" defaultValue={profile?.fatherName} />
+              <Input name="fatherName" defaultValue={profile?.fatherName} required />
+            </div>
+            <div>
+              <Label>Date of birth</Label>
+              <Input name="dateOfBirth" type="date" defaultValue={profile?.dateOfBirth?.toISOString().slice(0, 10)} required />
             </div>
             <div>
               <Label>Residential status</Label>
-              <select name="residentialStatus" defaultValue={profile?.residentialStatus || "RESIDENT"} className="sans w-full rounded-md border border-[#d7cfc0] px-3 py-2 text-sm">
+              <select name="residentialStatus" defaultValue={profile?.residentialStatus || ""} required className="sans w-full rounded-md border border-[#d7cfc0] px-3 py-2 text-sm">
+                <option value="">Select residential status</option>
                 <option value="RESIDENT">Resident</option>
-                <option value="RNOR">RNOR</option>
-                <option value="NRI">NRI</option>
+                <option value="RNOR">RNOR (not eligible for ITR-4 JSON)</option>
+                <option value="NRI">NRI (not eligible for ITR-4 JSON)</option>
               </select>
             </div>
             <div>
               <Label>Phone</Label>
-              <Input name="phone" defaultValue={profile?.phone} />
+              <Input name="phone" defaultValue={profile?.phone} required />
             </div>
             <div>
               <Label>Address</Label>
-              <Input name="address" defaultValue={profile?.addressLine1} />
+              <Input name="address" defaultValue={profile?.addressLine1} required />
+            </div>
+            <div>
+              <Label>Locality / area</Label>
+              <Input name="locality" defaultValue={profile?.addressLine2} />
             </div>
             <div className="grid grid-cols-3 gap-2">
-              <Input name="city" placeholder="City" defaultValue={profile?.city} />
-              <Input name="state" placeholder="State" defaultValue={profile?.state} />
-              <Input name="pincode" placeholder="PIN" defaultValue={profile?.pincode} />
+              <Input name="city" placeholder="City" defaultValue={profile?.city} required />
+              <Input name="state" placeholder="State" defaultValue={profile?.state} required />
+              <Input name="pincode" placeholder="PIN" defaultValue={profile?.pincode} required />
             </div>
             <Button>Save and continue</Button>
           </form>

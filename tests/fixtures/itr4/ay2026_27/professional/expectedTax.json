@@ -1,0 +1,34 @@
+{
+  "regime": "NEW",
+  "salaryIncome": 0,
+  "businessIncome": 0,
+  "professionIncome": 1400000,
+  "housePropertyIncome": 0,
+  "otherSources": 0,
+  "capitalGains": 0,
+  "normalRateIncome": 1400000,
+  "specialRateIncome": 0,
+  "taxBeforeRebate": 90000,
+  "taxOnSpecialRate": 0,
+  "rebate": 0,
+  "surcharge": 0,
+  "cess": 3600,
+  "totalTax": 93600,
+  "tds": 0,
+  "tcs": 0,
+  "prepaid": 0,
+  "settlement": {
+    "status": "TAX_PAYABLE",
+    "amount": 93600,
+    "signed": -93600,
+    "breakdown": {
+      "totalTax": 93600,
+      "prepaid": 0,
+      "tds": 0,
+      "tcs": 0,
+      "advanceTax": 0,
+      "selfAssessmentTax": 0
+    }
+  },
+  "flags": []
+}

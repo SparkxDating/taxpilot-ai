@@ -9,7 +9,8 @@ import { presumptive44AD, presumptive44ADA } from "./presumptive";
 import { computeCapitalGains } from "./capitalGains";
 import { totalTds, totalTcs } from "./tds";
 import { splitPayments } from "./taxPayments";
-import { roundIncomeAmount, roundTaxAmount, roundReturnAmount } from "./rounding";
+import { roundIncomeAmount, roundTaxAmount } from "./rounding";
+import { calculateRefundOrPayable } from "./refund";
 
 export type TaxComputation = {
   assessmentYear: string;
@@ -48,6 +49,7 @@ export type TaxComputation = {
   };
   capitalGainsDetail: ReturnType<typeof computeCapitalGains>;
   flags: string[];
+  settlement: ReturnType<typeof calculateRefundOrPayable>;
 };
 
 function housePropertyIncome(hp: NormalizedReturn["houseProperties"], regime: "NEW" | "OLD") {
@@ -57,7 +59,7 @@ function housePropertyIncome(hp: NormalizedReturn["houseProperties"], regime: "N
       const interest = regime === "OLD" ? Math.min(p.interestOnLoan, 200_000) : 0;
       return sum - interest;
     }
-    const afterStd = nav - Math.round(nav * 0.3);
+    const afterStd = nav - roundIncomeAmount(nav * 0.3);
     return sum + afterStd - p.interestOnLoan;
   }, 0);
 }
@@ -93,8 +95,10 @@ export function calculateAy2026_27(data: NormalizedReturn): TaxComputation {
         : 0;
   const cg = computeCapitalGains(data.capitalGains);
   if (cg.needsManualReview) flags.push("UNSUPPORTED_CAPITAL_GAINS");
+  if (hp < 0) flags.push("HP_LOSS_SETOFF");
   const other = roundIncomeAmount(data.otherIncome.reduce((s, o) => s + o.amount, 0));
   const normalGTI = roundIncomeAmount(salaryIncome + hp + biz + prof + other);
+  if (normalGTI < 0) flags.push("UNSUPPORTED_LOSS_CARRY_FORWARD");
   const gtiIncLtcg = roundIncomeAmount(normalGTI + cg.ltcg112A);
   const deductionLines = evaluateDeductions(data.deductions, regime);
   const deductions = roundIncomeAmount(totalEligible(deductionLines));
@@ -102,12 +106,16 @@ export function calculateAy2026_27(data: NormalizedReturn): TaxComputation {
   const taxableIncome = roundIncomeAmount(normalTaxable + cg.ltcg112A);
   const slabs = regime === "NEW" ? NEW_REGIME_SLABS : OLD_REGIME_SLABS_GENERAL;
   const normalTax = taxOnSlabs(normalTaxable, slabs);
-  const { rebate, marginalRelief } = rebate87A({
+  const rebateOpts = {
     residentIndividual: data.taxpayerType === "INDIVIDUAL" && data.residentialStatus === "RESIDENT",
     regime,
-    taxableIncome,
     taxBeforeRebate: normalTax,
-  });
+  };
+  const rebateIfNormalOnly = rebate87A({ ...rebateOpts, taxableIncome: normalTaxable });
+  const { rebate, marginalRelief } = rebate87A({ ...rebateOpts, taxableIncome });
+  if (cg.ltcg112A > 0 && rebateIfNormalOnly.rebate !== rebate) {
+    flags.push("REBATE_112A_THRESHOLD_INTERACTION");
+  }
   const afterRebate = roundTaxAmount(Math.max(0, normalTax - rebate - marginalRelief));
   const specialTax = cg.tax112A;
   const taxBeforeCess = afterRebate + specialTax;
@@ -118,7 +126,8 @@ export function calculateAy2026_27(data: NormalizedReturn): TaxComputation {
   const tcs = totalTcs(data.tds);
   const { advanceTax, selfAssessmentTax } = splitPayments(data.taxPayments);
   const prepaid = roundTaxAmount(tds + tcs + advanceTax + selfAssessmentTax);
-  const refundOrPayable = roundReturnAmount(prepaid - totalTax);
+  const settlement = calculateRefundOrPayable({ totalTax, tds, tcs, advanceTax, selfAssessmentTax });
+  const refundOrPayable = settlement.signed;
   return {
     assessmentYear: data.assessmentYear,
     regime,
@@ -148,7 +157,8 @@ export function calculateAy2026_27(data: NormalizedReturn): TaxComputation {
     selfAssessmentTax,
     prepaid,
     refundOrPayable,
-    isRefund: refundOrPayable > 0,
+    isRefund: settlement.status === "REFUND",
+    settlement,
     standardDeduction: std,
     presumptive: { ad, ada },
     capitalGainsDetail: cg,

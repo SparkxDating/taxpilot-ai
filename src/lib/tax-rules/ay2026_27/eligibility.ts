@@ -7,7 +7,7 @@ export const ITR4_HOUSE_PROPERTY_CAP = 2;
 
 export type EligibilityInput = {
   taxpayerType: "INDIVIDUAL" | "HUF" | "FIRM";
-  residentialStatus: "RESIDENT" | "RNOR" | "NRI";
+  residentialStatus: "RESIDENT" | "RNOR" | "NRI" | "";
   isLlp: boolean;
   isDirector: boolean;
   sources: string[];
@@ -43,7 +43,9 @@ export function determineItrType(input: EligibilityInput): EligibilityResult {
   if (input.taxpayerType === "FIRM" && input.isLlp) {
     reasons.push("LLPs cannot file ITR-4. Use ITR-3 or ITR-5 as applicable.");
   }
-  if (input.residentialStatus !== "RESIDENT") {
+  if (!input.residentialStatus) {
+    reasons.push("Residential status is required. TaxPilot will not assume Resident.");
+  } else if (input.residentialStatus !== "RESIDENT") {
     reasons.push("ITR-4 is only for resident taxpayers. RNOR/NRI filers are routed to ITR-3.");
   }
   if (input.isDirector) {

@@ -1,3 +1,4 @@
+/** Synthetic test/demo taxpayers only. Never imported by production JSON generation or new-account creation. */
 import type { NormalizedReturn } from "./model";
 
 const base = (): NormalizedReturn => ({
@@ -34,23 +35,23 @@ export const fixtures: Record<string, NormalizedReturn> = {
   simpleBusiness: {
     ...base(),
     name: "Imran Trader",
-    business: { section: "44AD", turnover: 4_500_000, digitalReceipts: 4_500_000, cashReceipts: 0, declaredIncome: 0, nature: "Trading" },
+    business: { section: "44AD", turnover: 4_500_000, digitalReceipts: 4_500_000, cashReceipts: 0, declaredIncome: 0, nature: "Trading", natureCode: "09027" },
   },
   professional: {
     ...base(),
     name: "Pooja Designer",
-    profession: { section: "44ADA", grossReceipts: 2_800_000, cashReceipts: 50_000, declaredIncome: 0, profession: "Design" },
+    profession: { section: "44ADA", grossReceipts: 2_800_000, cashReceipts: 50_000, declaredIncome: 0, profession: "Design", natureCode: "16005" },
   },
   salaryPlusBusiness: {
     ...base(),
     name: "Rahul Dual",
     salary: { gross: 840_000, exemptions: 0, tds: 40_000, employerName: "Acme", employerTan: "DELA12345A" },
-    business: { section: "44AD", turnover: 1_200_000, digitalReceipts: 1_200_000, cashReceipts: 0, declaredIncome: 0, nature: "Retail" },
+    business: { section: "44AD", turnover: 1_200_000, digitalReceipts: 1_200_000, cashReceipts: 0, declaredIncome: 0, nature: "Retail", natureCode: "09027" },
   },
   businessInterest: {
     ...base(),
     name: "Neha Interest",
-    business: { section: "44AD", turnover: 2_000_000, digitalReceipts: 1_900_000, cashReceipts: 100_000, declaredIncome: 0, nature: "Services" },
+    business: { section: "44AD", turnover: 2_000_000, digitalReceipts: 1_900_000, cashReceipts: 100_000, declaredIncome: 0, nature: "Services", natureCode: "09027" },
     otherIncome: [{ kind: "Interest", amount: 32_000, source: "HDFC" }],
   },
   itr3Books: {
@@ -63,7 +64,7 @@ export const fixtures: Record<string, NormalizedReturn> = {
     ...base(),
     name: "TDS Case",
     salary: { gross: 1_500_000, exemptions: 0, tds: 84_000, employerName: "Corp", employerTan: "MUMM12345B" },
-    business: { section: "44AD", turnover: 600_000, digitalReceipts: 600_000, cashReceipts: 0, declaredIncome: 0, nature: "Consulting" },
+    business: { section: "44AD", turnover: 600_000, digitalReceipts: 600_000, cashReceipts: 0, declaredIncome: 0, nature: "Consulting", natureCode: "09027" },
   },
   mismatch: {
     ...base(),

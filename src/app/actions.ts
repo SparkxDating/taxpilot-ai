@@ -111,19 +111,22 @@ export async function saveProfileAction(formData: FormData) {
   const ret = await prisma.taxReturn.findFirst({ where: { id, userId: session.userId } });
   if (!ret) redirect("/dashboard");
   const pan = String(formData.get("pan") || "").toUpperCase().trim();
+  const profileData = {
+    pan,
+    fatherName: String(formData.get("fatherName") || "").trim(),
+    phone: String(formData.get("phone") || "").trim(),
+    addressLine1: String(formData.get("address") || "").trim(),
+    addressLine2: String(formData.get("locality") || "").trim(),
+    city: String(formData.get("city") || "").trim(),
+    state: String(formData.get("state") || "").trim(),
+    pincode: String(formData.get("pincode") || "").trim(),
+    residentialStatus: String(formData.get("residentialStatus") || "").trim(),
+    dateOfBirth: formData.get("dateOfBirth") ? new Date(String(formData.get("dateOfBirth"))) : undefined,
+  };
   await prisma.profile.upsert({
     where: { userId: session.userId },
-    update: {
-      pan,
-      fatherName: String(formData.get("fatherName") || ""),
-      phone: String(formData.get("phone") || ""),
-      addressLine1: String(formData.get("address") || ""),
-      city: String(formData.get("city") || ""),
-      state: String(formData.get("state") || ""),
-      pincode: String(formData.get("pincode") || ""),
-      residentialStatus: String(formData.get("residentialStatus") || "RESIDENT"),
-    },
-    create: { userId: session.userId, pan },
+    update: profileData,
+    create: { userId: session.userId, ...profileData },
   });
   await prisma.user.update({ where: { id: session.userId }, data: { name: String(formData.get("name") || session.name) } });
   await recomputeReturn(id);
@@ -161,7 +164,8 @@ export async function saveIncomeAction(formData: FormData) {
       data: {
         returnId: id,
         section: "44AD",
-        nature: String(formData.get("nature") || "Retail"),
+        nature: String(formData.get("nature") || "").trim(),
+        natureCode: String(formData.get("natureCode") || "").trim(),
         turnover,
         digitalReceipts: digital,
         cashReceipts: cash,
@@ -174,7 +178,8 @@ export async function saveIncomeAction(formData: FormData) {
       data: {
         returnId: id,
         section: "44ADA",
-        profession: String(formData.get("profession") || "Consultancy"),
+        profession: String(formData.get("profession") || "").trim(),
+        natureCode: String(formData.get("professionCode") || "").trim(),
         grossReceipts: n(String(formData.get("grossReceipts"))),
         cashReceipts: n(String(formData.get("profCash"))),
         declaredIncome: n(String(formData.get("declaredProfession"))),
@@ -184,12 +189,12 @@ export async function saveIncomeAction(formData: FormData) {
   }
   if (n(String(formData.get("interest")))) {
     await prisma.otherIncome.create({
-      data: { returnId: id, kind: "Interest", amount: n(String(formData.get("interest"))), source: String(formData.get("interestSource") || "Bank") },
+      data: { returnId: id, kind: "Interest", amount: n(String(formData.get("interest"))), source: String(formData.get("interestSource") || "").trim() },
     });
   }
   if (n(String(formData.get("dividend")))) {
     await prisma.otherIncome.create({
-      data: { returnId: id, kind: "Dividend", amount: n(String(formData.get("dividend"))), source: "Shares" },
+      data: { returnId: id, kind: "Dividend", amount: n(String(formData.get("dividend"))), source: String(formData.get("dividendSource") || "").trim() },
     });
   }
   if (String(formData.get("hpOccupancy"))) {
@@ -203,7 +208,10 @@ export async function saveIncomeAction(formData: FormData) {
       },
     });
   }
-  await prisma.taxReturn.update({ where: { id }, data: { taxRegime: String(formData.get("regime") || "NEW") } });
+  const regime = String(formData.get("regime") || "");
+  if (regime === "NEW" || regime === "OLD") {
+    await prisma.taxReturn.update({ where: { id }, data: { taxRegime: regime } });
+  }
   await recomputeReturn(id);
   redirect(`/returns/${id}/deductions`);
 }
@@ -249,14 +257,21 @@ export async function saveTdsBankAction(formData: FormData) {
   if (n(String(formData.get("selfAsst")))) {
     await prisma.taxPayment.create({ data: { returnId: id, kind: "SELF_ASSESSMENT", amount: n(String(formData.get("selfAsst"))) } });
   }
-  await prisma.bankAccount.create({
-    data: {
-      returnId: id,
-      ifsc: String(formData.get("ifsc") || "").toUpperCase(),
-      accountNumber: String(formData.get("accountNumber") || ""),
-      isPrimary: true,
-    },
-  });
+  const ifsc = String(formData.get("ifsc") || "").toUpperCase().trim();
+  const accountNumber = String(formData.get("accountNumber") || "").trim();
+  const bankName = String(formData.get("bankName") || "").trim();
+  if (ifsc || accountNumber) {
+    await prisma.bankAccount.create({
+      data: {
+        returnId: id,
+        ifsc,
+        accountNumber,
+        bankName,
+        accountType: String(formData.get("accountType") || "SB"),
+        isPrimary: true,
+      },
+    });
+  }
   await recomputeReturn(id);
   redirect(`/returns/${id}/validate`);
 }

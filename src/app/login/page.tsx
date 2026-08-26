@@ -2,9 +2,11 @@ import { loginAction } from "@/app/actions";
 import { SiteHeader } from "@/components/site-header";
 import { Button, Card, Input, Label } from "@/components/ui";
 import Link from "next/link";
+import { isDemoMode } from "@/lib/demo";
 
 export default async function Login({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
   const { error } = await searchParams;
+  const demo = isDemoMode();
   return (
     <div>
       <SiteHeader />
@@ -15,11 +17,11 @@ export default async function Login({ searchParams }: { searchParams: Promise<{ 
           <form action={loginAction} className="mt-6 space-y-3">
             <div>
               <Label>Email</Label>
-              <Input name="email" type="email" required defaultValue="demo@taxpilot.local" />
+              <Input name="email" type="email" required defaultValue={demo ? "demo@taxpilot.local" : undefined} />
             </div>
             <div>
               <Label>Password</Label>
-              <Input name="password" type="password" required defaultValue="password123" />
+              <Input name="password" type="password" required defaultValue={demo ? "password123" : undefined} />
             </div>
             <Button className="w-full">Continue</Button>
           </form>

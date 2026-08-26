@@ -1,9 +1,9 @@
 import { createHash } from "crypto";
 import type { NormalizedReturn } from "@/lib/tax/model";
-import { mapItr4Official, OFFICIAL_SCHEMA_VER } from "@/lib/itr-json/ay2026_27/itr4/mapper";
-import { validateITR4Json } from "@/lib/itr-json/validator/officialValidator";
-import { businessValidate, canGenerateJson } from "@/lib/validation/businessRules";
+import { OFFICIAL_SCHEMA_VER } from "@/lib/itr-json/ay2026_27/itr4/mapper";
+import { evaluateFilingGate } from "@/lib/validation/filingGate";
 import type { TaxComputation } from "@/lib/tax/engine";
+import { TaxEngine } from "@/lib/tax/engine";
 
 export const SCHEMA_VERSION = OFFICIAL_SCHEMA_VER;
 
@@ -15,66 +15,51 @@ export type GeneratedItr = {
   valid: boolean;
   errors: Array<{ severity: string; message: string; field?: string; path?: string; explanation?: string; fixRoute?: string }>;
   warnings: Array<{ severity: string; message: string; field?: string }>;
-  official: ReturnType<typeof validateITR4Json>;
+  official: ReturnType<typeof evaluateFilingGate>["official"];
   blocked: boolean;
+  layers: ReturnType<typeof evaluateFilingGate>["layers"];
 };
 
 export function generateITRJson(data: NormalizedReturn, opts?: { generatedAt?: Date; returnId?: string }): GeneratedItr {
-  if (data.itrType !== "ITR-4") {
-    return {
-      json: null,
-      digest: "",
-      calc: mapItr4Official({ ...data, itrType: "ITR-4" }, opts?.generatedAt).calc,
-      schemaVersion: SCHEMA_VERSION,
-      valid: false,
-      blocked: true,
-      official: { valid: false, errors: [], warnings: [], schemaVersion: SCHEMA_VERSION, schemaMode: "OfficialSchema" },
-      errors: [
-        {
-          severity: "ERROR",
-          message: "ITR-3 preparation is currently in development. Filing JSON generation is not available yet.",
-          field: "itrType",
-        },
-      ],
-      warnings: [],
-    };
-  }
-  const business = businessValidate(data, opts?.returnId);
-  const { json, calc } = mapItr4Official(data, opts?.generatedAt);
-  const official = validateITR4Json(json, data.assessmentYear);
-  const digest = createHash("sha256").update(JSON.stringify(json)).digest("hex");
-  const errors = [
-    ...business.filter((b) => b.severity === "ERROR").map((b) => ({
-      severity: b.severity,
-      message: b.message,
-      field: b.field,
-      explanation: b.explanation,
-      fixRoute: b.fixRoute,
-    })),
-    ...official.errors.map((e) => ({
+  const calc = TaxEngine.calculate(data);
+  const gate = evaluateFilingGate(data, opts?.returnId, opts?.generatedAt);
+  const errors: GeneratedItr["errors"] = [];
+  if (!gate.integrity.ok) {
+    errors.push({
       severity: "ERROR",
-      message: e.explanation,
-      field: e.field,
-      path: e.path,
-      explanation: e.message,
-    })),
-  ];
-  const warnings = business.filter((b) => b.severity !== "ERROR").map((b) => ({ severity: b.severity, message: b.message, field: b.field }));
-  const valid = canGenerateJson(business) && official.valid;
+      message: "Official ITR-4 schema integrity verification failed. JSON generation has been disabled.",
+      field: "schema",
+    });
+  }
+  for (const c of gate.completeness) {
+    errors.push({ severity: c.severity, message: c.message, field: c.field, explanation: c.explanation, fixRoute: c.fixRoute });
+  }
+  for (const u of gate.unsupported) {
+    errors.push({ severity: u.severity, message: u.message, field: u.code, fixRoute: u.fixRoute });
+  }
+  for (const b of gate.business.filter((x) => x.severity === "ERROR")) {
+    errors.push({ severity: b.severity, message: b.message, field: b.field, explanation: b.explanation, fixRoute: b.fixRoute });
+  }
+  for (const e of gate.official.errors) {
+    errors.push({ severity: "ERROR", message: e.explanation, field: e.field, path: e.path, explanation: e.message });
+  }
+  const warnings = gate.business.filter((b) => b.severity !== "ERROR").map((b) => ({ severity: b.severity, message: b.message, field: b.field }));
+  const digest = gate.json ? createHash("sha256").update(JSON.stringify(gate.json)).digest("hex") : "";
   return {
-    json,
+    json: gate.ready ? gate.json : null,
     digest,
-    calc,
-    schemaVersion: official.schemaVersion,
-    valid,
-    blocked: !valid,
+    calc: gate.calc || calc,
+    schemaVersion: gate.official.schemaVersion || SCHEMA_VERSION,
+    valid: gate.ready,
+    blocked: !gate.ready,
     errors,
     warnings,
-    official,
+    official: gate.official,
+    layers: gate.layers,
   };
 }
 
-/** @deprecated adapter mapping removed from production. */
 export function mapToOfficialJson(data: NormalizedReturn) {
-  return mapItr4Official(data);
+  const gate = evaluateFilingGate(data, undefined, undefined);
+  return { json: gate.json, calc: gate.calc };
 }
