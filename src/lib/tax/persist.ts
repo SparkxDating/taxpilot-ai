@@ -1,0 +1,114 @@
+import { prisma } from "@/lib/db";
+import { loadNormalized } from "./load";
+import { TaxEngine } from "./engine";
+import { validateReturn } from "./validation";
+import { determineItrType } from "@/lib/tax-rules/ay2026_27/eligibility";
+import { json } from "@/lib/utils";
+
+export async function recomputeReturn(returnId: string) {
+  const data = await loadNormalized(returnId);
+  if (!data) return null;
+  const ret = await prisma.taxReturn.findUnique({
+    where: { id: returnId },
+    include: { questions: true, answers: true, houseProperties: true, capitalGains: true, user: { include: { profile: true } } },
+  });
+  if (!ret) return null;
+  const sources = json<string[]>(ret.incomeSourcesJson, []);
+  const directorAnswer = ret.answers.find((a) => {
+    const q = ret.questions.find((qq) => qq.id === a.questionId);
+    return q?.code === "DIRECTOR";
+  });
+  const eligibility = determineItrType({
+    taxpayerType: ret.taxpayerType as "INDIVIDUAL" | "HUF" | "FIRM",
+    residentialStatus: (ret.user.profile?.residentialStatus as "RESIDENT" | "RNOR" | "NRI") || "RESIDENT",
+    isLlp: false,
+    isDirector: directorAnswer?.value === "Yes",
+    sources,
+    totalIncome: 0,
+    housePropertyCount: ret.houseProperties.length,
+    ltcg112A: ret.capitalGains.filter((g) => g.section === "112A").reduce((s, g) => s + g.amount, 0),
+    stcg: ret.capitalGains.filter((g) => g.kind === "STCG").reduce((s, g) => s + g.amount, 0),
+    otherLtcg: ret.capitalGains.filter((g) => g.section !== "112A").reduce((s, g) => s + g.amount, 0),
+    agriculturalIncome: 0,
+    lotteryOrRacehorse: sources.includes("LOTTERY"),
+    foreignAssets: false,
+    unlistedShares: false,
+    businessTurnover: data.business.turnover,
+    businessCash: data.business.cashReceipts,
+    professionReceipts: data.profession.grossReceipts,
+    professionCash: data.profession.cashReceipts,
+    usesPresumptive: data.business.section !== "BOOKS" || data.profession.section !== "BOOKS",
+    detailedBooks: sources.includes("BOOKS") || data.business.section === "BOOKS",
+    fnoTrading: sources.includes("FNO"),
+  });
+  const calc = TaxEngine.calculate({
+    ...data,
+    itrType: eligibility.recommended === "UNSUPPORTED" ? "ITR-3" : eligibility.recommended,
+  });
+  const eligWithIncome = determineItrType({
+    taxpayerType: ret.taxpayerType as "INDIVIDUAL" | "HUF" | "FIRM",
+    residentialStatus: (ret.user.profile?.residentialStatus as "RESIDENT" | "RNOR" | "NRI") || "RESIDENT",
+    isLlp: false,
+    isDirector: directorAnswer?.value === "Yes",
+    sources,
+    totalIncome: calc.grossTotalIncome,
+    housePropertyCount: ret.houseProperties.length,
+    ltcg112A: calc.capitalGains,
+    stcg: ret.capitalGains.filter((g) => g.kind === "STCG").reduce((s, g) => s + g.amount, 0),
+    otherLtcg: ret.capitalGains.filter((g) => g.section !== "112A").reduce((s, g) => s + g.amount, 0),
+    agriculturalIncome: 0,
+    lotteryOrRacehorse: false,
+    foreignAssets: false,
+    unlistedShares: false,
+    businessTurnover: data.business.turnover,
+    businessCash: data.business.cashReceipts,
+    professionReceipts: data.profession.grossReceipts,
+    professionCash: data.profession.cashReceipts,
+    usesPresumptive: true,
+    detailedBooks: data.business.section === "BOOKS",
+    fnoTrading: sources.includes("FNO"),
+  });
+  const issues = validateReturn({
+    ...data,
+    itrType: eligWithIncome.recommended === "UNSUPPORTED" ? "ITR-3" : eligWithIncome.recommended,
+  }).issues;
+  await prisma.validationError.deleteMany({ where: { returnId } });
+  if (issues.length) {
+    await prisma.validationError.createMany({
+      data: issues.map((i) => ({
+        returnId,
+        level: String(i.level),
+        severity: i.severity,
+        section: i.section,
+        field: i.field,
+        message: i.message,
+        suggestion: i.suggestion,
+        href: i.href.replace("/returns/ID", `/returns/${returnId}`),
+      })),
+    });
+  }
+  const docs = await prisma.document.count({ where: { returnId } });
+  const banks = await prisma.bankAccount.count({ where: { returnId } });
+  let completion = 15;
+  if (ret.user.profile?.pan) completion += 15;
+  if (ret.questions.filter((q) => q.status === "PENDING").length === 0 && ret.questions.length) completion += 15;
+  if (calc.grossTotalIncome > 0) completion += 25;
+  if (banks) completion += 15;
+  if (docs) completion += 10;
+  if (issues.filter((i) => i.severity === "ERROR").length === 0 && calc.grossTotalIncome > 0) completion += 5;
+  completion = Math.min(100, completion);
+  const itrType = eligWithIncome.recommended === "UNSUPPORTED" ? "ITR-3" : eligWithIncome.recommended;
+  const updated = await prisma.taxReturn.update({
+    where: { id: returnId },
+    data: {
+      itrType,
+      completionPercentage: completion,
+      estimatedTax: calc.totalTax,
+      estimatedRefund: Math.max(0, calc.refundOrPayable),
+      calculationJson: JSON.stringify(calc),
+      eligibilityJson: JSON.stringify(eligWithIncome),
+      status: completion >= 80 && issues.every((i) => i.severity !== "ERROR") ? "READY" : "IN_PROGRESS",
+    },
+  });
+  return { updated, calc, eligibility: eligWithIncome, issues };
+}

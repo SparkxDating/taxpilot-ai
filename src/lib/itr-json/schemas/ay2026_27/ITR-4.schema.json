@@ -1,0 +1,28 @@
+{
+  "$id": "taxpilot://ay2026-27/ITR-4.schema.json",
+  "title": "TaxPilot adapter schema for ITR-4 AY 2026-27",
+  "description": "Structural adapter aligned to the published ITR-4 JSON layout. Replace with the ITD-published schema from the e-filing downloads page when integrating the official file. TaxPilot is not affiliated with the Income Tax Department.",
+  "type": "object",
+  "required": [
+    "CreationInfo",
+    "Form_ITR4",
+    "PartA_GEN1",
+    "PartB_TI",
+    "PartB_TTI",
+    "ScheduleBA",
+    "Verification"
+  ],
+  "properties": {
+    "CreationInfo": { "type": "object" },
+    "Form_ITR4": { "type": "object" },
+    "PartA_GEN1": { "type": "object" },
+    "PartA_GEN2": { "type": "object" },
+    "PartB_TI": { "type": "object" },
+    "PartB_TTI": { "type": "object" },
+    "ScheduleBP": { "type": "object" },
+    "ScheduleHP": { "type": "object" },
+    "ScheduleOS": { "type": "object" },
+    "ScheduleBA": { "type": "object" },
+    "Verification": { "type": "object" }
+  }
+}

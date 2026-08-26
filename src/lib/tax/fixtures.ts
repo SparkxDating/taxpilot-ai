@@ -1,0 +1,70 @@
+import type { NormalizedReturn } from "./model";
+
+const base = (): NormalizedReturn => ({
+  assessmentYear: "2026-27",
+  itrType: "ITR-4",
+  taxpayerType: "INDIVIDUAL",
+  residentialStatus: "RESIDENT",
+  pan: "ABCDE1234F",
+  name: "Demo Taxpayer",
+  regime: "NEW",
+  salary: { gross: 0, exemptions: 0, tds: 0, employerName: "", employerTan: "" },
+  business: { section: "44AD", turnover: 0, digitalReceipts: 0, cashReceipts: 0, declaredIncome: 0, nature: "" },
+  profession: { section: "44ADA", grossReceipts: 0, cashReceipts: 0, declaredIncome: 0, profession: "" },
+  houseProperties: [],
+  otherIncome: [],
+  capitalGains: [],
+  deductions: [],
+  tds: [],
+  taxPayments: [],
+  bankAccounts: [{ ifsc: "HDFC0001234", accountNumber: "12345678901", isPrimary: true }],
+});
+
+export const fixtures: Record<string, NormalizedReturn> = {
+  simpleBusiness: {
+    ...base(),
+    name: "Imran Trader",
+    business: { section: "44AD", turnover: 4_500_000, digitalReceipts: 4_500_000, cashReceipts: 0, declaredIncome: 0, nature: "Trading" },
+  },
+  professional: {
+    ...base(),
+    name: "Pooja Designer",
+    profession: { section: "44ADA", grossReceipts: 2_800_000, cashReceipts: 50_000, declaredIncome: 0, profession: "Design" },
+  },
+  salaryPlusBusiness: {
+    ...base(),
+    name: "Rahul Dual",
+    salary: { gross: 840_000, exemptions: 0, tds: 40_000, employerName: "Acme", employerTan: "DELA12345A" },
+    business: { section: "44AD", turnover: 1_200_000, digitalReceipts: 1_200_000, cashReceipts: 0, declaredIncome: 0, nature: "Retail" },
+  },
+  businessInterest: {
+    ...base(),
+    name: "Neha Interest",
+    business: { section: "44AD", turnover: 2_000_000, digitalReceipts: 1_900_000, cashReceipts: 100_000, declaredIncome: 0, nature: "Services" },
+    otherIncome: [{ kind: "Interest", amount: 32_000, source: "HDFC" }],
+  },
+  itr3Books: {
+    ...base(),
+    itrType: "ITR-3",
+    name: "Books Filer",
+    business: { section: "BOOKS", turnover: 8_000_000, digitalReceipts: 7_000_000, cashReceipts: 1_000_000, declaredIncome: 1_200_000, nature: "Manufacturing" },
+  },
+  withTds: {
+    ...base(),
+    name: "TDS Case",
+    salary: { gross: 1_500_000, exemptions: 0, tds: 84_000, employerName: "Corp", employerTan: "MUMM12345B" },
+    business: { section: "44AD", turnover: 600_000, digitalReceipts: 600_000, cashReceipts: 0, declaredIncome: 0, nature: "Consulting" },
+  },
+  mismatch: {
+    ...base(),
+    name: "Mismatch",
+    pan: "BADPAN",
+    bankAccounts: [],
+    otherIncome: [{ kind: "Interest", amount: 32_000, source: "Bank" }],
+  },
+  ineligibleItr4: {
+    ...base(),
+    name: "Director Case",
+    capitalGains: [{ kind: "STCG", section: "111A", amount: 200_000 }],
+  },
+};

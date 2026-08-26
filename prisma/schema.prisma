@@ -1,0 +1,388 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  passwordHash  String
+  name          String
+  role          String    @default("USER")
+  totpEnabled   Boolean   @default(false)
+  totpSecret    String?
+  status        String    @default("ACTIVE")
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  profile         Profile?
+  returns         TaxReturn[]
+  documents       Document[]
+  auditLogs       AuditLog[]
+  subscription    Subscription?
+  payments        Payment[]
+  resetTokens     PasswordResetToken[]
+
+  @@index([email])
+  @@index([role])
+}
+
+model Profile {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  pan             String   @default("")
+  aadhaarLast4    String   @default("")
+  dateOfBirth     DateTime?
+  gender          String   @default("")
+  fatherName      String   @default("")
+  residentialStatus String @default("RESIDENT")
+  phone           String   @default("")
+  addressLine1    String   @default("")
+  addressLine2    String   @default("")
+  city            String   @default("")
+  state           String   @default("")
+  pincode         String   @default("")
+  country         String   @default("91")
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  token     String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model TaxReturn {
+  id                   String   @id @default(cuid())
+  userId               String
+  assessmentYear       String
+  itrType              String   @default("UNDETERMINED")
+  taxpayerType         String   @default("INDIVIDUAL")
+  taxRegime            String   @default("NEW")
+  status               String   @default("DRAFT")
+  completionPercentage Int      @default(0)
+  estimatedTax         Int      @default(0)
+  estimatedRefund      Int      @default(0)
+  incomeSourcesJson    String   @default("[]")
+  eligibilityJson      String   @default("{}")
+  calculationJson      String   @default("{}")
+  form10IeaAck         String   @default("")
+  form10IeaDate        DateTime?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  user             User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  versions         ReturnVersion[]
+  documents        Document[]
+  incomeSources    IncomeSource[]
+  salary           SalaryIncome[]
+  business         BusinessIncome[]
+  professional     ProfessionalIncome[]
+  capitalGains     CapitalGain[]
+  houseProperties  HouseProperty[]
+  otherIncomes     OtherIncome[]
+  deductions       Deduction[]
+  tdsEntries       TDSEntry[]
+  taxPayments      TaxPayment[]
+  bankAccounts     BankAccount[]
+  questions        Question[]
+  answers          Answer[]
+  validationErrors ValidationError[]
+  jsonFiles        ITRJsonFile[]
+  auditLogs        AuditLog[]
+  profitLoss       ProfitLoss?
+  balanceSheet     BalanceSheet?
+
+  @@index([userId, assessmentYear])
+  @@index([status])
+  @@index([itrType])
+}
+
+model ReturnVersion {
+  id         String   @id @default(cuid())
+  returnId   String
+  snapshot   String
+  note       String   @default("")
+  createdAt  DateTime @default(now())
+  taxReturn  TaxReturn @relation(fields: [returnId], references: [id], onDelete: Cascade)
+  @@index([returnId, createdAt])
+}
+
+model Document {
+  id           String   @id @default(cuid())
+  userId       String
+  returnId     String?
+  kind         String
+  fileName     String
+  mimeType     String
+  sizeBytes    Int
+  storageKey   String
+  status       String   @default("UPLOADED")
+  createdAt    DateTime @default(now())
+  deletedAt    DateTime?
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  taxReturn    TaxReturn? @relation(fields: [returnId], references: [id], onDelete: SetNull)
+  extractions  DocumentExtraction[]
+  @@index([userId, returnId])
+  @@index([status])
+}
+
+model DocumentExtraction {
+  id           String   @id @default(cuid())
+  documentId   String
+  fieldKey     String
+  extractedValue String
+  numericValue Int?
+  confidence   Float
+  pageRef      String   @default("")
+  status       String   @default("NEEDS_REVIEW")
+  extractedAt  DateTime @default(now())
+  document     Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  @@index([documentId, fieldKey])
+}
+
+model IncomeSource {
+  id        String   @id @default(cuid())
+  returnId  String
+  kind      String
+  selected  Boolean  @default(true)
+  taxReturn TaxReturn @relation(fields: [returnId], references: [id], onDelete: Cascade)
+  @@unique([returnId, kind])
+}
+
+model SalaryIncome {
+  id              String   @id @default(cuid())
+  returnId        String
+  employerName    String   @default("")
+  employerTan     String   @default("")
+  grossSalary     Int      @default(0)
+  exemptions      Int      @default(0)
+  standardDeduction Int    @default(0)
+  tds             Int      @default(0)
+  taxReturn       TaxReturn @relation(fields: [returnId], references: [id], onDelete: Cascade)
+}
+
+model BusinessIncome {
+  id               String   @id @default(cuid())
+  returnId         String
+  section          String   @default("44AD")
+  nature           String   @default("")
+  turnover         Int      @default(0)
+  digitalReceipts  Int      @default(0)
+  cashReceipts     Int      @default(0)
+  presumptiveIncome Int    @default(0)
+  declaredIncome   Int      @default(0)
+  taxReturn        TaxReturn @relation(fields: [returnId], references: [id], onDelete: Cascade)
+}
+
+model ProfessionalIncome {
+  id               String   @id @default(cuid())
+  returnId         String
+  section          String   @default("44ADA")
+  profession       String   @default("")
+  grossReceipts    Int      @default(0)
+  cashReceipts     Int      @default(0)
+  presumptiveIncome Int    @default(0)
+  declaredIncome   Int      @default(0)
+  personalNotCompany Boolean @default(true)
+  taxReturn        TaxReturn @relation(fields: [returnId], references: [id], onDelete: Cascade)
+}
+
+model CapitalGain {
+  id          String   @id @default(cuid())
+  returnId    String
+  kind        String
+  section     String   @default("112A")
+  amount      Int      @default(0)
+  taxReturn   TaxReturn @relation(fields: [returnId], references: [id], onDelete: Cascade)
+}
+
+model HouseProperty {
+  id                 String   @id @default(cuid())
+  returnId           String
+  occupancy          String   @default("SELF_OCCUPIED")
+  annualLetableValue Int      @default(0)
+  municipalTaxes     Int      @default(0)
+  interestOnLoan     Int      @default(0)
+  taxReturn          TaxReturn @relation(fields: [returnId], references: [id], onDelete: Cascade)
+}
+
+model OtherIncome {
+  id        String   @id @default(cuid())
+  returnId  String
+  kind      String
+  amount    Int      @default(0)
+  source    String   @default("")
+  taxReturn TaxReturn @relation(fields: [returnId], references: [id], onDelete: Cascade)
+}
+
+model Deduction {
+  id        String   @id @default(cuid())
+  returnId  String
+  section   String
+  amount    Int      @default(0)
+  notes     String   @default("")
+  taxReturn TaxReturn @relation(fields: [returnId], references: [id], onDelete: Cascade)
+  @@index([returnId, section])
+}
+
+model TDSEntry {
+  id           String   @id @default(cuid())
+  returnId     String
+  source       String   @default("26AS")
+  sectionCode  String   @default("")
+  tan          String   @default("")
+  deductorName String   @default("")
+  amount       Int      @default(0)
+  taxReturn    TaxReturn @relation(fields: [returnId], references: [id], onDelete: Cascade)
+}
+
+model TaxPayment {
+  id          String   @id @default(cuid())
+  returnId    String
+  kind        String
+  bsrCode     String   @default("")
+  challanNo   String   @default("")
+  amount      Int      @default(0)
+  paidOn      DateTime?
+  taxReturn   TaxReturn @relation(fields: [returnId], references: [id], onDelete: Cascade)
+}
+
+model BankAccount {
+  id            String   @id @default(cuid())
+  returnId      String
+  ifsc          String
+  accountNumber String
+  accountType   String   @default("SAVINGS")
+  isPrimary     Boolean  @default(true)
+  taxReturn     TaxReturn @relation(fields: [returnId], references: [id], onDelete: Cascade)
+}
+
+model ProfitLoss {
+  id                String   @id @default(cuid())
+  returnId          String   @unique
+  revenue           Int      @default(0)
+  otherIncome       Int      @default(0)
+  purchases         Int      @default(0)
+  employeeCost      Int      @default(0)
+  depreciation      Int      @default(0)
+  otherExpenses     Int      @default(0)
+  netProfit         Int      @default(0)
+  taxReturn         TaxReturn @relation(fields: [returnId], references: [id], onDelete: Cascade)
+}
+
+model BalanceSheet {
+  id             String   @id @default(cuid())
+  returnId       String   @unique
+  capital        Int      @default(0)
+  securedLoans   Int      @default(0)
+  unsecuredLoans Int      @default(0)
+  currentLiabilities Int @default(0)
+  fixedAssets    Int      @default(0)
+  inventories    Int      @default(0)
+  sundryDebtors  Int      @default(0)
+  cashBank       Int      @default(0)
+  loansAdvances  Int      @default(0)
+  taxReturn      TaxReturn @relation(fields: [returnId], references: [id], onDelete: Cascade)
+}
+
+model Question {
+  id        String   @id @default(cuid())
+  returnId  String
+  code      String
+  prompt    String
+  helpText  String   @default("")
+  kind      String   @default("CHOICE")
+  optionsJson String @default("[]")
+  required  Boolean  @default(true)
+  sortOrder Int      @default(0)
+  status    String   @default("PENDING")
+  taxReturn TaxReturn @relation(fields: [returnId], references: [id], onDelete: Cascade)
+  answers   Answer[]
+  @@index([returnId, status])
+}
+
+model Answer {
+  id         String   @id @default(cuid())
+  returnId   String
+  questionId String
+  value      String
+  createdAt  DateTime @default(now())
+  taxReturn  TaxReturn @relation(fields: [returnId], references: [id], onDelete: Cascade)
+  question   Question  @relation(fields: [questionId], references: [id], onDelete: Cascade)
+}
+
+model ValidationError {
+  id          String   @id @default(cuid())
+  returnId    String
+  level       String
+  severity    String
+  section     String
+  field       String
+  message     String
+  suggestion  String   @default("")
+  href        String   @default("")
+  createdAt   DateTime @default(now())
+  taxReturn   TaxReturn @relation(fields: [returnId], references: [id], onDelete: Cascade)
+  @@index([returnId, severity])
+}
+
+model ITRJsonFile {
+  id             String   @id @default(cuid())
+  returnId       String
+  assessmentYear String
+  itrType        String
+  schemaVersion  String
+  generatedAt    DateTime @default(now())
+  fileHash       String
+  storagePath    String
+  valid          Boolean  @default(false)
+  taxReturn      TaxReturn @relation(fields: [returnId], references: [id], onDelete: Cascade)
+  @@index([returnId])
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  returnId  String?
+  action    String
+  entity    String
+  entityId  String   @default("")
+  metadata  String   @default("{}")
+  createdAt DateTime @default(now())
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  taxReturn TaxReturn? @relation(fields: [returnId], references: [id], onDelete: SetNull)
+  @@index([userId, createdAt])
+  @@index([returnId])
+}
+
+model Subscription {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  plan      String   @default("FREE")
+  status    String   @default("ACTIVE")
+  provider  String   @default("NONE")
+  currentPeriodEnd DateTime?
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Payment {
+  id            String   @id @default(cuid())
+  userId        String
+  provider      String
+  providerRef   String   @default("")
+  amount        Int
+  currency      String   @default("INR")
+  status        String   @default("CREATED")
+  createdAt     DateTime @default(now())
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId, status])
+}
