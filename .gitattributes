@@ -1,0 +1,3 @@
+# Official ITR-4 schema is CRLF as published by the Income Tax Department.
+# Git must not convert line endings or the SHA-256 will change.
+src/lib/itr-json/schemas/ay2026_27/itr4/schema.json -text

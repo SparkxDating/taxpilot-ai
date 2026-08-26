@@ -1,4 +1,5 @@
 import Ajv from "ajv-draft-04";
+/** Production AJV compiles the official AY 2026-27 ITR-4 schema only. */
 import officialSchema from "@/lib/itr-json/schemas/ay2026_27/itr4/schema.json";
 import metadata from "@/lib/itr-json/schemas/ay2026_27/itr4/metadata.json";
 import { formatAjvError } from "./errorFormatter";

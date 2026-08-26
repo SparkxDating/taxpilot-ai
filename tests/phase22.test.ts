@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mkdtempSync, writeFileSync, rmSync } from "fs";
+import { mkdtempSync, writeFileSync, rmSync, readFileSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
 import { fixtures } from "@/lib/tax/fixtures";
@@ -8,6 +8,7 @@ import { generateITRJson } from "@/lib/itr-json/mapper";
 import {
   compareSchemaChecksum,
   INTEGRITY_FAIL_MESSAGE,
+  schemaFileSha256,
   verifySchemaFile,
   verifySchemaIntegrity,
   verifySchemaIntegrityFrom,
@@ -35,9 +36,23 @@ const late = new Date(Date.UTC(2026, 9, 15));
 describe("schema integrity", () => {
   it("PASS: bundled schema matches metadata and was verified against ITD", () => {
     const r = verifySchemaIntegrity();
+    const officialDigest = "5e9af50083ad92faa684a02ae51693189b43df16b92c1da5a184026fc5cdc2ac";
     expect(r.ok).toBe(true);
-    expect(r.actual).toBe(String(metadata.sha256).toLowerCase());
+    expect(r.actual).toBe(officialDigest);
+    expect(String(metadata.sha256).toLowerCase()).toBe(officialDigest);
+    expect(schemaFileSha256()).toBe(officialDigest);
     expect(metadata.verifiedMatch).toBe(true);
+    expect(metadata.fileSize).toBe(252342);
+  });
+
+  it("production AJV path loads official schema.json, not the development adapter", () => {
+    const validator = readFileSync(join(process.cwd(), "src/lib/itr-json/validator/officialValidator.ts"), "utf8");
+    const loader = readFileSync(join(process.cwd(), "src/lib/itr-json/validator/schemaLoader.ts"), "utf8");
+    const mapper = readFileSync(join(process.cwd(), "src/lib/itr-json/mapper.ts"), "utf8");
+    expect(validator).toContain("schemas/ay2026_27/itr4/schema.json");
+    expect(validator).not.toContain("development/adapter");
+    expect(loader).toContain("itr4/schema.json");
+    expect(mapper).not.toContain("development/adapter");
   });
 
   it("FAIL: incorrect metadata checksum", () => {

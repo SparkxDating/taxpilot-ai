@@ -1,0 +1,44 @@
+{
+  "sourceUrl": "https://www.incometax.gov.in/iec/foportal/sites/default/files/2026-07/ITR-4_2026_Main_V1.1.json",
+  "officialStatus": 200,
+  "officialContentType": "application/json",
+  "officialLastModified": "Tue, 30 Jun 2026 18:36:09 GMT",
+  "officialSavedTo": "C:\\Users\\manoj\\AppData\\Local\\Temp\\taxpilot-itr4-official\\ITR-4_2026_Main_V1.1.json",
+  "officialFileSize": 252342,
+  "bundledFileSize": 252342,
+  "officialSha256": "5e9af50083ad92faa684a02ae51693189b43df16b92c1da5a184026fc5cdc2ac",
+  "bundledSha256": "5e9af50083ad92faa684a02ae51693189b43df16b92c1da5a184026fc5cdc2ac",
+  "byteIdentical": true,
+  "bundledCrlfSha256": "5e9af50083ad92faa684a02ae51693189b43df16b92c1da5a184026fc5cdc2ac",
+  "bundledLfSha256": "e4f640764e3c523bdf391c1f5a07adebcf02e033ec8b209240b6f75fb612cf87",
+  "officialCrlfSha256": "5e9af50083ad92faa684a02ae51693189b43df16b92c1da5a184026fc5cdc2ac",
+  "officialLfSha256": "e4f640764e3c523bdf391c1f5a07adebcf02e033ec8b209240b6f75fb612cf87",
+  "matchesPreviouslyReportedE4f64076": {
+    "bundledRaw": false,
+    "bundledCrlf": false,
+    "officialRaw": false,
+    "officialCrlf": false
+  },
+  "parseOk": true,
+  "officialTopKeys": [
+    "$schema",
+    "type",
+    "additionalProperties",
+    "properties",
+    "definitions"
+  ],
+  "bundledTopKeys": [
+    "$schema",
+    "type",
+    "additionalProperties",
+    "properties",
+    "definitions"
+  ],
+  "jsonDeepEqual": true,
+  "formNamePattern": "ITR-4",
+  "assessmentYearPattern": "2026",
+  "schemaVerPattern": "Ver1.0",
+  "formVerPattern": "Ver1.0",
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "verifiedAt": "2026-08-26T19:46:26.483Z"
+}
