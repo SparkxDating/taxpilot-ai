@@ -71,7 +71,10 @@ export default async function ReviewPage({ params }: { params: Promise<{ id: str
           <p>Rebate u/s 87A: {inr(calc.rebate || 0)}</p>
           <p>Surcharge: {inr(calc.surcharge || 0)}</p>
           <p>Cess: {inr(calc.cess || 0)}</p>
+          <p>Interest 234A / 234B / 234C: {inr(calc.interest234A || 0)} / {inr(calc.interest234B || 0)} / {inr(calc.interest234C || 0)}</p>
+          <p>Late fee 234F: {inr(calc.fee234F || 0)}</p>
           <p>Total tax: {inr(calc.totalTax || 0)}</p>
+          <p>Total liability (tax + interest + fee): {inr(calc.totalLiability || calc.totalTax || 0)}</p>
           <p>
             Settlement: {calc.settlement?.status || (calc.isRefund ? "REFUND" : calc.totalTax ? "TAX_PAYABLE" : "ZERO")}{" "}
             {inr(calc.settlement?.amount ?? Math.abs(calc.refundOrPayable || 0))}

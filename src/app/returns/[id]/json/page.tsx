@@ -49,8 +49,11 @@ export default async function JsonPage({ params }: { params: Promise<{ id: strin
             {!canGen ? (
               <Card className="mt-4">
                 <p>Unable to generate the return. Please correct the highlighted issues.</p>
+                {preview?.errors.some((e) => e.field === "UNSUPPORTED_INTEREST_CALCULATION") ? (
+                  <p className="sans mt-2 text-sm">Interest calculation requires additional information.</p>
+                ) : null}
                 <Link href={`/returns/${id}/validate`} className="sans mt-2 inline-block text-sm text-[#1f4e46]">
-                  Open validation
+                  Review
                 </Link>
               </Card>
             ) : (

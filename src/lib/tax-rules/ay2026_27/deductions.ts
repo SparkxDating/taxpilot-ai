@@ -7,7 +7,7 @@ export const LIMITS = {
   "80CCC": 150_000,
   "80CCD(1)": 150_000,
   "80CCD(1B)": 50_000,
-  "80D": 100_000,
+  "80D": 25_000,
   "80D_SELF": 25_000,
   "80D_SELF_SENIOR": 50_000,
   "80TTA": 10_000,
@@ -27,8 +27,8 @@ export function capDeduction(section: string, amount: number) {
   return Math.min(Math.max(0, amount), limit);
 }
 
-/** New regime: most Chapter VI-A deductions are not available. */
+/** New regime: most Chapter VI-A deductions are not available. Engine uses getApplicableDeductions. */
 export function deductionAllowedInRegime(section: string, regime: "NEW" | "OLD") {
   if (regime === "OLD") return true;
-  return ["80CCD(2)", "STD"].includes(section);
+  return section === "80CCD(2)" || section === "STD";
 }

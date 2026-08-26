@@ -35,8 +35,15 @@ export default async function TdsPage({ params }: { params: Promise<{ id: string
             <Input name="tdsAmount" type="number" placeholder="TDS amount" defaultValue={t?.amount || ""} />
             <Label>Advance tax</Label>
             <Input name="advanceTax" type="number" defaultValue={adv?.amount || ""} />
+            <Label>Advance tax paid on</Label>
+            <Input name="advanceTaxDate" type="date" defaultValue={adv?.paidOn?.toISOString().slice(0, 10)} />
             <Label>Self-assessment tax</Label>
             <Input name="selfAsst" type="number" defaultValue={sa?.amount || ""} />
+            <Label>Self-assessment tax paid on</Label>
+            <Input name="selfAsstDate" type="date" defaultValue={sa?.paidOn?.toISOString().slice(0, 10)} />
+            <p className="sans text-xs text-[#5c6773]">
+              Interest calculation requires additional information. If advance tax is paid, enter the payment date or JSON generation is blocked.
+            </p>
             <Label>Bank name</Label>
             <Input name="bankName" defaultValue={b?.bankName} required />
             <Label>Primary bank IFSC</Label>

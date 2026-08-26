@@ -9,8 +9,13 @@ import { isCodeAD, isCodeADA } from "./natureCodes";
 export const OFFICIAL_SCHEMA_VER = "Ver1.0";
 export const SOFTWARE_ID = "SW00000001";
 
-function emptyIntrst() {
-  return { IntrstPayUs234A: 0, IntrstPayUs234B: 0, IntrstPayUs234C: 0, LateFilingFee234F: 0 };
+function interestBlock(calc: TaxComputation) {
+  return {
+    IntrstPayUs234A: calc.interest234A || 0,
+    IntrstPayUs234B: calc.interest234B || 0,
+    IntrstPayUs234C: calc.interest234C || 0,
+    LateFilingFee234F: calc.fee234F || 0,
+  };
 }
 
 function othSrcNature(kind: string) {
@@ -24,7 +29,7 @@ function othSrcNature(kind: string) {
 }
 
 export function mapItr4Official(data: NormalizedReturn, generatedAt = new Date()) {
-  const calc = calculateAy2026_27(data);
+  const calc = calculateAy2026_27(data, generatedAt);
   const date = generatedAt.toISOString().slice(0, 10);
   const names = splitName(data.lastName ? `${data.firstName || ""} ${data.lastName}` : data.name);
   const first = (data.firstName || names.first).slice(0, 25);
@@ -38,7 +43,7 @@ export function mapItr4Official(data: NormalizedReturn, generatedAt = new Date()
   const pin = pinInt(data.pincode);
   const mobile = mobileInt(data.phone);
   const settlement = calculateRefundOrPayable({
-    totalTax: calc.totalTax,
+    totalTax: calc.totalLiability ?? calc.totalTax,
     tds: calc.tds,
     tcs: calc.tcs,
     advanceTax: calc.advanceTax,
@@ -110,8 +115,8 @@ export function mapItr4Official(data: NormalizedReturn, generatedAt = new Date()
     EducationCess: calc.cess,
     GrossTaxLiability: calc.totalTax,
     NetTaxLiability: calc.totalTax,
-    IntrstPay: emptyIntrst(),
-    TotTaxPlusIntrstPay: calc.totalTax,
+    IntrstPay: interestBlock(calc),
+    TotTaxPlusIntrstPay: calc.totalLiability ?? calc.totalTax,
   };
 
   const taxPaid = {

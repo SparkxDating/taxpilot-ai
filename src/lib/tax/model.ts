@@ -75,7 +75,13 @@ export type NormalizedReturn = {
   }>;
   otherIncome: Array<{ kind: string; amount: number; source: string }>;
   capitalGains: CapitalGainLine[];
-  deductions: Array<{ section: string; amount: number }>;
+  deductions: Array<{
+    section: string;
+    amount: number;
+    beneficiary?: "SELF_FAMILY" | "PARENTS";
+    kind?: "PREMIUM" | "PREVENTIVE" | "MEDICAL";
+    senior?: boolean;
+  }>;
   tds: Array<{
     sectionCode: string;
     tan: string;
@@ -84,7 +90,7 @@ export type NormalizedReturn = {
     grossAmount?: number;
     kind?: string;
   }>;
-  taxPayments: Array<{ kind: "ADVANCE" | "SELF_ASSESSMENT" | "REGULAR"; amount: number }>;
+  taxPayments: Array<{ kind: "ADVANCE" | "SELF_ASSESSMENT" | "REGULAR"; amount: number; paidOn?: string }>;
   bankAccounts: Array<{
     ifsc: string;
     accountNumber: string;

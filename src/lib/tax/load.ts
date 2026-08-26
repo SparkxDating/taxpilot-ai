@@ -89,7 +89,17 @@ export async function loadNormalized(returnId: string, userId?: string): Promise
       holdingPeriodDays: g.holdingPeriodDays,
       specialRate: g.specialRate ?? undefined,
     })),
-    deductions: ret.deductions.map((d) => ({ section: d.section, amount: d.amount })),
+    deductions: ret.deductions.map((d) => {
+      let extra: { beneficiary?: "SELF_FAMILY" | "PARENTS"; kind?: "PREMIUM" | "PREVENTIVE" | "MEDICAL"; senior?: boolean } = {};
+      if (d.notes) {
+        try {
+          extra = JSON.parse(d.notes) as typeof extra;
+        } catch {
+          extra = {};
+        }
+      }
+      return { section: d.section, amount: d.amount, ...extra };
+    }),
     tds: ret.tdsEntries.map((t) => ({
       sectionCode: t.sectionCode,
       tan: t.tan,
@@ -101,6 +111,7 @@ export async function loadNormalized(returnId: string, userId?: string): Promise
     taxPayments: ret.taxPayments.map((p) => ({
       kind: p.kind as "ADVANCE" | "SELF_ASSESSMENT" | "REGULAR",
       amount: p.amount,
+      paidOn: p.paidOn ? p.paidOn.toISOString().slice(0, 10) : undefined,
     })),
     bankAccounts: ret.bankAccounts.map((b) => ({
       ifsc: b.ifsc,

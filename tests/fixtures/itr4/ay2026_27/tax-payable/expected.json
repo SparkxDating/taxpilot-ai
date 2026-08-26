@@ -110,11 +110,11 @@
         "NetTaxLiability": 103116,
         "IntrstPay": {
           "IntrstPayUs234A": 0,
-          "IntrstPayUs234B": 0,
-          "IntrstPayUs234C": 0,
+          "IntrstPayUs234B": 956,
+          "IntrstPayUs234C": 965,
           "LateFilingFee234F": 0
         },
-        "TotTaxPlusIntrstPay": 103116
+        "TotTaxPlusIntrstPay": 105037
       },
       "TaxPaid": {
         "TaxesPaid": {
@@ -124,7 +124,7 @@
           "SelfAssessmentTax": 0,
           "TotalTaxesPaid": 84000
         },
-        "BalTaxPayable": 19116
+        "BalTaxPayable": 21037
       },
       "Refund": {
         "RefundDue": 0,

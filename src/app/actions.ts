@@ -223,9 +223,24 @@ export async function saveDeductionsAction(formData: FormData) {
   const ret = await prisma.taxReturn.findFirst({ where: { id, userId: session.userId } });
   if (!ret) redirect("/dashboard");
   await prisma.deduction.deleteMany({ where: { returnId: id } });
-  for (const section of ["80C", "80D", "80CCD(1B)", "80TTA"]) {
-    const amount = n(String(formData.get(section)));
-    if (amount) await prisma.deduction.create({ data: { returnId: id, section, amount } });
+  const parentsSenior = String(formData.get("parentsSenior") || "") === "Y";
+  const rows: Array<{ section: string; amount: number; notes?: string }> = [
+    { section: "80C", amount: n(String(formData.get("80C"))) },
+    { section: "80CCC", amount: n(String(formData.get("80CCC"))) },
+    { section: "80CCD(1)", amount: n(String(formData.get("80CCD(1)"))) },
+    { section: "80CCD(1B)", amount: n(String(formData.get("80CCD(1B)"))) },
+    { section: "80D_SELF", amount: n(String(formData.get("80D_SELF"))) },
+    { section: "80D_SELF_PREVENTIVE", amount: n(String(formData.get("80D_SELF_PREVENTIVE"))) },
+    { section: "80D_SELF_MEDICAL", amount: n(String(formData.get("80D_SELF_MEDICAL"))) },
+    { section: "80D_PARENTS", amount: n(String(formData.get("80D_PARENTS"))), notes: JSON.stringify({ senior: parentsSenior, beneficiary: "PARENTS", kind: "PREMIUM" }) },
+    { section: "80D_PARENTS_PREVENTIVE", amount: n(String(formData.get("80D_PARENTS_PREVENTIVE"))), notes: JSON.stringify({ senior: parentsSenior, beneficiary: "PARENTS", kind: "PREVENTIVE" }) },
+    { section: "80D_PARENTS_MEDICAL", amount: n(String(formData.get("80D_PARENTS_MEDICAL"))), notes: JSON.stringify({ senior: parentsSenior, beneficiary: "PARENTS", kind: "MEDICAL" }) },
+    { section: "80TTA", amount: n(String(formData.get("80TTA"))) },
+    { section: "80TTB", amount: n(String(formData.get("80TTB"))) },
+  ];
+  for (const row of rows) {
+    if (!row.amount) continue;
+    await prisma.deduction.create({ data: { returnId: id, section: row.section, amount: row.amount, notes: row.notes || "" } });
   }
   await recomputeReturn(id);
   redirect(`/returns/${id}/tds`);
@@ -252,10 +267,26 @@ export async function saveTdsBankAction(formData: FormData) {
     });
   }
   if (n(String(formData.get("advanceTax")))) {
-    await prisma.taxPayment.create({ data: { returnId: id, kind: "ADVANCE", amount: n(String(formData.get("advanceTax"))) } });
+    const paidOn = String(formData.get("advanceTaxDate") || "");
+    await prisma.taxPayment.create({
+      data: {
+        returnId: id,
+        kind: "ADVANCE",
+        amount: n(String(formData.get("advanceTax"))),
+        paidOn: paidOn ? new Date(paidOn) : undefined,
+      },
+    });
   }
   if (n(String(formData.get("selfAsst")))) {
-    await prisma.taxPayment.create({ data: { returnId: id, kind: "SELF_ASSESSMENT", amount: n(String(formData.get("selfAsst"))) } });
+    const paidOn = String(formData.get("selfAsstDate") || "");
+    await prisma.taxPayment.create({
+      data: {
+        returnId: id,
+        kind: "SELF_ASSESSMENT",
+        amount: n(String(formData.get("selfAsst"))),
+        paidOn: paidOn ? new Date(paidOn) : undefined,
+      },
+    });
   }
   const ifsc = String(formData.get("ifsc") || "").toUpperCase().trim();
   const accountNumber = String(formData.get("accountNumber") || "").trim();

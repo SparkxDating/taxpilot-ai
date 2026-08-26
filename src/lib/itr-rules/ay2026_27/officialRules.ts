@@ -14,4 +14,8 @@ export const OFFICIAL_ITR4_RULES = [
   { id: "ITR4_RULE_009", description: "112A taxed at special rate, not slabs", fields: ["specialRateIncome"], severity: "ERROR" as const, implemented: true },
   { id: "ITR4_RULE_010", description: "STCG / non-112A capital gains not permitted in ITR-4", fields: ["capitalGains"], severity: "ERROR" as const, implemented: true },
   { id: "ITR4_RULE_011", description: "ITR-4 JSON schema draft-04 structural validation", fields: ["ITR.ITR4"], severity: "ERROR" as const, implemented: true },
+  { id: "ITR4_RULE_012", description: "s.234A/234B/234C interest must be computed or blocked, never silent zero when interest may apply", fields: ["IntrstPay"], severity: "ERROR" as const, implemented: true },
+  { id: "ITR4_RULE_013", description: "s.234F late-filing fee from due date 31 Aug 2026 and total income", fields: ["LateFilingFee234F"], severity: "ERROR" as const, implemented: true },
+  { id: "ITR4_RULE_014", description: "s.80D uses self/parents baskets and senior limits, not a flat ₹1 lakh cap", fields: ["Section80D"], severity: "ERROR" as const, implemented: true },
+  { id: "ITR4_RULE_015", description: "s.80C + 80CCC + 80CCD(1) combined ceiling ₹1.5 lakh", fields: ["Section80C"], severity: "ERROR" as const, implemented: true },
 ] as const;

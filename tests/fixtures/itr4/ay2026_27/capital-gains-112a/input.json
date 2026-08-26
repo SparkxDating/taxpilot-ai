@@ -47,7 +47,9 @@
       "section": "112A",
       "amount": 100000,
       "saleConsideration": 400000,
-      "acquisitionCost": 300000
+      "acquisitionCost": 300000,
+      "acquisitionDate": "2023-01-15",
+      "saleDate": "2026-02-01"
     }
   ],
   "deductions": [],

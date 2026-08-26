@@ -61,7 +61,15 @@ writeCase("refund", refund);
 const capitalGains: NormalizedReturn = {
   ...fixtures.simpleBusiness,
   capitalGains: [
-    { kind: "LTCG_112A", section: "112A", amount: 100_000, saleConsideration: 400_000, acquisitionCost: 300_000 },
+    {
+      kind: "LTCG_112A",
+      section: "112A",
+      amount: 100_000,
+      saleConsideration: 400_000,
+      acquisitionCost: 300_000,
+      acquisitionDate: "2023-01-15",
+      saleDate: "2026-02-01",
+    },
   ],
 };
 writeCase("capital-gains-112a", capitalGains);

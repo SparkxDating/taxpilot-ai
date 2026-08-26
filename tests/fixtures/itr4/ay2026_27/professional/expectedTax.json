@@ -19,10 +19,10 @@
   "prepaid": 0,
   "settlement": {
     "status": "TAX_PAYABLE",
-    "amount": 93600,
-    "signed": -93600,
+    "amount": 103007,
+    "signed": -103007,
     "breakdown": {
-      "totalTax": 93600,
+      "totalTax": 103007,
       "prepaid": 0,
       "tds": 0,
       "tcs": 0,

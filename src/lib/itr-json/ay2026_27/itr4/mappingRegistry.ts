@@ -46,6 +46,10 @@ export const ITR4_MAPPING_REGISTRY: MappingRow[] = [
   { internalField: "settlement.refund", itrPath: "ITR.ITR4.Refund.RefundDue", type: "number", transformation: "REFUND amount or 0", source: "calculateRefundOrPayable", required: true, validationRule: "ITR4_RULE_011", testFixture: "refund" },
   { internalField: "settlement.payable", itrPath: "ITR.ITR4.TaxPaid.BalTaxPayable", type: "number", transformation: "TAX_PAYABLE amount or 0", source: "calculateRefundOrPayable", required: true, validationRule: "ITR4_RULE_011", testFixture: "tax-payable" },
   { internalField: "verification.name", itrPath: "ITR.ITR4.Verification.Declaration.AssesseeVerName", type: "string", transformation: "as entered", source: "User.name", required: true, validationRule: "ITR4_REQ_NAME", testFixture: "simple" },
+  { internalField: "calc.interest234A", itrPath: "ITR.ITR4.TaxComputation.IntrstPay.IntrstPayUs234A", type: "number", transformation: "s.234A or 0 if not late", source: "interest234A", required: true, validationRule: "ITR4_RULE_012", testFixture: "tax-payable" },
+  { internalField: "calc.interest234B", itrPath: "ITR.ITR4.TaxComputation.IntrstPay.IntrstPayUs234B", type: "number", transformation: "s.234B", source: "interest234B", required: true, validationRule: "ITR4_RULE_012", testFixture: "tax-payable" },
+  { internalField: "calc.interest234C", itrPath: "ITR.ITR4.TaxComputation.IntrstPay.IntrstPayUs234C", type: "number", transformation: "s.234C or block if dates missing", source: "interest234C", required: true, validationRule: "ITR4_RULE_012", testFixture: "tax-payable" },
+  { internalField: "calc.fee234F", itrPath: "ITR.ITR4.TaxComputation.IntrstPay.LateFilingFee234F", type: "number", transformation: "s.234F", source: "fee234F", required: true, validationRule: "ITR4_RULE_013", testFixture: "simple" },
 ];
 
 export const CRITICAL_INTERNAL_FIELDS = [

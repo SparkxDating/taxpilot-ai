@@ -15,7 +15,7 @@ export function evaluateFilingGate(data: NormalizedReturn, returnId?: string, ge
   const integrity = verifySchemaIntegrity();
   const completeness = completenessValidate(data, returnId);
   const unsupported = detectUnsupported(data, returnId);
-  const calc = TaxEngine.calculate(data);
+  const calc = TaxEngine.calculate(data, generatedAt);
   const eligibility = determineItrType({
     taxpayerType: data.taxpayerType,
     residentialStatus: data.residentialStatus,
@@ -47,7 +47,10 @@ export function evaluateFilingGate(data: NormalizedReturn, returnId?: string, ge
   const taxFail =
     calc.totalTax < 0 ||
     calc.flags.includes("UNSUPPORTED_CAPITAL_GAINS") ||
-    calc.flags.includes("UNSUPPORTED_LOSS_CARRY_FORWARD");
+    calc.flags.includes("UNSUPPORTED_LOSS_CARRY_FORWARD") ||
+    calc.flags.includes("UNSUPPORTED_INTEREST_CALCULATION") ||
+    calc.flags.includes("UNSUPPORTED_CAPITAL_GAIN_DATES") ||
+    calc.flags.includes("UNSUPPORTED_CAPITAL_GAIN_HOLDING");
   const mapping = auditITR4Mapping();
 
   let official: ReturnType<typeof validateITR4Json> = {

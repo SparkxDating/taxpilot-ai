@@ -40,11 +40,24 @@ export function detectUnsupported(data: NormalizedReturn, returnId = "new"): Uns
   if (calc.grossTotalIncomeIncLtcg > ITR4_INCOME_CAP) {
     block("UNSUPPORTED_INCOME_LIMIT", "Total income exceeds the ₹50 lakh ITR-4 ceiling.");
   }
-  if (calc.housePropertyIncome < 0 && calc.grossTotalIncome < 0) {
-    block("UNSUPPORTED_LOSS_CARRY_FORWARD", "Current-year loss carry-forward is not implemented. Manual review is required.");
-  }
   if (data.business.section === "44AE") {
     block("UNSUPPORTED_44AE", "Section 44AE (goods carriages) is not enabled for filing JSON in this release.");
+  }
+  if (calc.flags.includes("UNSUPPORTED_INTEREST_CALCULATION")) {
+    block(
+      "UNSUPPORTED_INTEREST_CALCULATION",
+      "Interest calculation requires additional information. This return requires interest calculation that TaxPilot does not currently support.",
+      "tds",
+    );
+  }
+  if (calc.flags.includes("UNSUPPORTED_CAPITAL_GAIN_DATES") || calc.flags.includes("UNSUPPORTED_CAPITAL_GAIN_HOLDING")) {
+    block(
+      "UNSUPPORTED_CAPITAL_GAIN_TYPE",
+      "Capital gain calculation for this transaction type is not currently supported. Manual review is required. Acquisition date, sale date and holding period are required for s.112A.",
+    );
+  }
+  if (calc.flags.includes("UNSUPPORTED_LOSS_CARRY_FORWARD")) {
+    block("UNSUPPORTED_LOSS_CARRY_FORWARD", "Current-year loss carry-forward is not implemented. Manual review is required.");
   }
   return out;
 }
