@@ -21,3 +21,13 @@ export function json<T>(raw: string | null | undefined, fallback: T): T {
     return fallback;
   }
 }
+
+export function maskAccount(n: string) {
+  if (!n || n.length < 4) return "••••";
+  return `••••${n.slice(-4)}`;
+}
+
+export function maskPan(pan: string) {
+  if (!pan || pan.length < 4) return "••••";
+  return `${pan.slice(0, 2)}••••${pan.slice(-3)}`;
+}

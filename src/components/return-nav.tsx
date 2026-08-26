@@ -10,7 +10,9 @@ const steps = [
   ["documents", "Documents"],
   ["reconcile", "AIS"],
   ["validate", "Checks"],
+  ["review", "Review"],
   ["summary", "Summary"],
+  ["json", "JSON"],
 ];
 
 export function ReturnNav({ id, current }: { id: string; current: string }) {

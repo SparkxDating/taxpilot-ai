@@ -7,7 +7,11 @@ export interface AIProvider {
   classifyDocument(fileName: string): Promise<string>;
 }
 
-/** Development adapter — templated explanations, never computes tax. */
+/**
+ * Development adapter — templated explanations.
+ * Must never: decide eligibility, calculate tax, fabricate values, mark validation resolved,
+ * or emit filing-ready data. Deterministic engines own the return.
+ */
 export class TemplateAIProvider implements AIProvider {
   name = "template-dev";
   configured = true;

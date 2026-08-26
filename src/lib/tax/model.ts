@@ -1,5 +1,21 @@
 export type TaxRegime = "NEW" | "OLD";
 
+export type CapitalGainLine = {
+  kind: string;
+  section: string;
+  amount: number;
+  assetType?: string;
+  identifier?: string;
+  acquisitionDate?: string;
+  saleDate?: string;
+  saleConsideration?: number;
+  acquisitionCost?: number;
+  improvementCost?: number;
+  transferExpenses?: number;
+  holdingPeriodDays?: number;
+  specialRate?: number;
+};
+
 export type NormalizedReturn = {
   assessmentYear: string;
   itrType: "ITR-4" | "ITR-3" | "UNDETERMINED";
@@ -7,7 +23,21 @@ export type NormalizedReturn = {
   residentialStatus: "RESIDENT" | "RNOR" | "NRI";
   pan: string;
   name: string;
+  firstName?: string;
+  lastName?: string;
+  fatherName?: string;
+  email?: string;
+  phone?: string;
   dateOfBirth?: string;
+  gender?: string;
+  addressLine1?: string;
+  locality?: string;
+  city?: string;
+  state?: string;
+  stateCode?: string;
+  pincode?: string;
+  employerCategory?: string;
+  verificationPlace?: string;
   regime: TaxRegime;
   salary: {
     gross: number;
@@ -23,6 +53,7 @@ export type NormalizedReturn = {
     cashReceipts: number;
     declaredIncome: number;
     nature: string;
+    natureCode?: string;
   };
   profession: {
     section: "44ADA" | "BOOKS";
@@ -30,17 +61,35 @@ export type NormalizedReturn = {
     cashReceipts: number;
     declaredIncome: number;
     profession: string;
+    natureCode?: string;
   };
   houseProperties: Array<{
     occupancy: "SELF_OCCUPIED" | "LET_OUT";
     annualLetableValue: number;
     municipalTaxes: number;
     interestOnLoan: number;
+    address?: string;
+    city?: string;
+    pincode?: string;
+    stateCode?: string;
   }>;
   otherIncome: Array<{ kind: string; amount: number; source: string }>;
-  capitalGains: Array<{ kind: string; section: string; amount: number }>;
+  capitalGains: CapitalGainLine[];
   deductions: Array<{ section: string; amount: number }>;
-  tds: Array<{ sectionCode: string; tan: string; amount: number; deductorName: string }>;
+  tds: Array<{
+    sectionCode: string;
+    tan: string;
+    amount: number;
+    deductorName: string;
+    grossAmount?: number;
+    kind?: string;
+  }>;
   taxPayments: Array<{ kind: "ADVANCE" | "SELF_ASSESSMENT" | "REGULAR"; amount: number }>;
-  bankAccounts: Array<{ ifsc: string; accountNumber: string; isPrimary: boolean }>;
+  bankAccounts: Array<{
+    ifsc: string;
+    accountNumber: string;
+    isPrimary: boolean;
+    bankName?: string;
+    accountType?: string;
+  }>;
 };

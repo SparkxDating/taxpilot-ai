@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import { TaxEngine } from "./engine";
 import { fixtures } from "./fixtures";
 import { determineItrType } from "@/lib/tax-rules/ay2026_27/eligibility";
-import { fieldValidation, taxConsistencyValidation, validateAgainstOfficialSchema } from "./validation";
+import { validateAgainstOfficialSchema } from "./validation";
+import { businessValidate } from "@/lib/validation/businessRules";
 import { generateITRJson } from "@/lib/itr-json/mapper";
 import { presumptive44AD, presumptive44ADA } from "@/lib/tax-rules/ay2026_27/presumptive";
 
@@ -85,20 +86,20 @@ describe("presumptive", () => {
 
 describe("validation and JSON", () => {
   it("mismatch fixture fails field validation", () => {
-    const issues = fieldValidation(fixtures.mismatch);
+    const issues = businessValidate(fixtures.mismatch);
     expect(issues.some((i) => i.field === "pan")).toBe(true);
     expect(issues.some((i) => i.field === "bankAccounts")).toBe(true);
   });
 
-  it("maps ITR-4 JSON and adapter schema", () => {
-    const out = generateITRJson(fixtures.simpleBusiness);
-    expect(out.json.ITR).toHaveProperty("ITR4");
+  it("maps ITR-4 JSON and official schema", () => {
+    const out = generateITRJson(fixtures.simpleBusiness, { generatedAt: new Date("2026-08-26") });
+    expect((out.json as { ITR: { ITR4: unknown } }).ITR.ITR4).toBeTruthy();
     const schema = validateAgainstOfficialSchema(out.json, "2026-27", "ITR-4");
     expect(schema.valid).toBe(true);
   });
 
   it("tax consistency catches low 44AD declaration", () => {
-    const issues = taxConsistencyValidation({
+    const issues = businessValidate({
       ...fixtures.simpleBusiness,
       business: { ...fixtures.simpleBusiness.business, declaredIncome: 1 },
     });

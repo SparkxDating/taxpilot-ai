@@ -32,6 +32,11 @@ export default async function Interview({ params }: { params: Promise<{ id: stri
         <p className="sans mt-2 text-sm text-[#5c6773]">
           Recommended form: <strong>{ret.itrType}</strong>. This decision is from published eligibility rules, not the assistant.
         </p>
+        {ret.itrType === "ITR-3" ? (
+          <Card className="mt-4">
+            <p className="font-medium">ITR-3 preparation is currently in development. Filing JSON generation is not available yet.</p>
+          </Card>
+        ) : null}
         {!eligibility.itr4Eligible ? (
           <Card className="mt-4 border-amber-200">
             <p className="font-medium">ITR-4 does not apply</p>

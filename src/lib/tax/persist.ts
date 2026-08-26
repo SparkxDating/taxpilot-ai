@@ -51,7 +51,7 @@ export async function recomputeReturn(returnId: string) {
     isLlp: false,
     isDirector: directorAnswer?.value === "Yes",
     sources,
-    totalIncome: calc.grossTotalIncome,
+    totalIncome: calc.grossTotalIncomeIncLtcg,
     housePropertyCount: ret.houseProperties.length,
     ltcg112A: calc.capitalGains,
     stcg: ret.capitalGains.filter((g) => g.kind === "STCG").reduce((s, g) => s + g.amount, 0),
@@ -68,10 +68,13 @@ export async function recomputeReturn(returnId: string) {
     detailedBooks: data.business.section === "BOOKS",
     fnoTrading: sources.includes("FNO"),
   });
-  const issues = validateReturn({
-    ...data,
-    itrType: eligWithIncome.recommended === "UNSUPPORTED" ? "ITR-3" : eligWithIncome.recommended,
-  }).issues;
+  const issues = validateReturn(
+    {
+      ...data,
+      itrType: eligWithIncome.recommended === "UNSUPPORTED" ? "ITR-3" : eligWithIncome.recommended,
+    },
+    returnId,
+  ).issues;
   await prisma.validationError.deleteMany({ where: { returnId } });
   if (issues.length) {
     await prisma.validationError.createMany({
@@ -83,7 +86,8 @@ export async function recomputeReturn(returnId: string) {
         field: i.field,
         message: i.message,
         suggestion: i.suggestion,
-        href: i.href.replace("/returns/ID", `/returns/${returnId}`),
+        code: i.id || "",
+        href: i.href.includes("{id}") ? i.href.replace("{id}", returnId) : i.href,
       })),
     });
   }
@@ -98,6 +102,15 @@ export async function recomputeReturn(returnId: string) {
   if (issues.filter((i) => i.severity === "ERROR").length === 0 && calc.grossTotalIncome > 0) completion += 5;
   completion = Math.min(100, completion);
   const itrType = eligWithIncome.recommended === "UNSUPPORTED" ? "ITR-3" : eligWithIncome.recommended;
+  const hasError = issues.some((i) => i.severity === "ERROR");
+  const fingerprint = JSON.stringify({ tax: calc.totalTax, ti: calc.taxableIncome, gti: calc.grossTotalIncome });
+  if (ret.dataFingerprint && ret.dataFingerprint !== fingerprint) {
+    await prisma.iTRJsonFile.updateMany({ where: { returnId, status: "CURRENT" }, data: { status: "SUPERSEDED" } });
+  }
+  let status = "IN_PROGRESS";
+  if (hasError) status = "VALIDATION_FAILED";
+  else if (completion >= 70) status = "READY_FOR_JSON";
+  else if (issues.some((i) => i.severity === "WARNING")) status = "NEEDS_REVIEW";
   const updated = await prisma.taxReturn.update({
     where: { id: returnId },
     data: {
@@ -107,7 +120,9 @@ export async function recomputeReturn(returnId: string) {
       estimatedRefund: Math.max(0, calc.refundOrPayable),
       calculationJson: JSON.stringify(calc),
       eligibilityJson: JSON.stringify(eligWithIncome),
-      status: completion >= 80 && issues.every((i) => i.severity !== "ERROR") ? "READY" : "IN_PROGRESS",
+      dataFingerprint: fingerprint,
+      schemaVersion: "Ver1.0",
+      status,
     },
   });
   return { updated, calc, eligibility: eligWithIncome, issues };

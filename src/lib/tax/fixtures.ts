@@ -7,6 +7,16 @@ const base = (): NormalizedReturn => ({
   residentialStatus: "RESIDENT",
   pan: "ABCDE1234F",
   name: "Demo Taxpayer",
+  fatherName: "Ramesh Taxpayer",
+  email: "demo@taxpilot.local",
+  phone: "9876543210",
+  dateOfBirth: "1990-01-15",
+  addressLine1: "12 MG Road",
+  locality: "Ashok Nagar",
+  city: "Bengaluru",
+  state: "Karnataka",
+  pincode: "560001",
+  verificationPlace: "Bengaluru",
   regime: "NEW",
   salary: { gross: 0, exemptions: 0, tds: 0, employerName: "", employerTan: "" },
   business: { section: "44AD", turnover: 0, digitalReceipts: 0, cashReceipts: 0, declaredIncome: 0, nature: "" },
@@ -17,7 +27,7 @@ const base = (): NormalizedReturn => ({
   deductions: [],
   tds: [],
   taxPayments: [],
-  bankAccounts: [{ ifsc: "HDFC0001234", accountNumber: "12345678901", isPrimary: true }],
+  bankAccounts: [{ ifsc: "HDFC0001234", accountNumber: "12345678901", isPrimary: true, bankName: "HDFC Bank", accountType: "SB" }],
 });
 
 export const fixtures: Record<string, NormalizedReturn> = {

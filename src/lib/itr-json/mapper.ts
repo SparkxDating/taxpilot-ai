@@ -1,113 +1,80 @@
 import { createHash } from "crypto";
 import type { NormalizedReturn } from "@/lib/tax/model";
-import { TaxEngine } from "@/lib/tax/engine";
-import { validateAgainstOfficialSchema, validateReturn } from "@/lib/tax/validation";
+import { mapItr4Official, OFFICIAL_SCHEMA_VER } from "@/lib/itr-json/ay2026_27/itr4/mapper";
+import { validateITR4Json } from "@/lib/itr-json/validator/officialValidator";
+import { businessValidate, canGenerateJson } from "@/lib/validation/businessRules";
+import type { TaxComputation } from "@/lib/tax/engine";
 
-export const SCHEMA_VERSION = "AY2026-27-adapter-1.0";
+export const SCHEMA_VERSION = OFFICIAL_SCHEMA_VER;
 
-export function mapToOfficialJson(data: NormalizedReturn) {
-  const calc = TaxEngine.calculate(data);
-  const formKey = data.itrType === "ITR-3" ? "ITR3" : "ITR4";
-  const created = new Date().toISOString();
-  const body = {
-    CreationInfo: {
-      SWVersionNo: SCHEMA_VERSION,
-      SWCreatedBy: "TaxPilotAI",
-      JSONCreatedBy: "TaxPilotAI",
-      JSONCreationDate: created.slice(0, 10),
-      IntermediaryCity: data.bankAccounts[0]?.ifsc.slice(0, 4) || "",
-      Digest: "",
-    },
-    Form_ITR4: {
-      FormName: data.itrType === "ITR-3" ? "ITR-3" : "ITR-4",
-      Description: data.itrType === "ITR-3" ? "ITR-3" : "ITR-4 SUGAM",
-      AssessmentYear: data.assessmentYear,
-      SchemaVer: SCHEMA_VERSION,
-      FormVer: "1.1",
-    },
-    PartA_GEN1: {
-      PersonalInfo: {
-        AssesseeName: { FirstName: data.name },
-        PAN: data.pan,
-        DOB: data.dateOfBirth || "",
-        Status: data.taxpayerType,
-        ResidentialStatus: data.residentialStatus,
-      },
-    },
-    PartA_GEN2: {
-      FilingStatus: {
-        ReturnFileSec: "11",
-        OptingNewTaxRegime: data.regime === "NEW" ? "Y" : "N",
-      },
-    },
-    PartB_TI: {
-      Salaries: calc.salaryIncome,
-      IncomeFromHP: calc.housePropertyIncome,
-      ProfBusGain: calc.businessIncome + calc.professionIncome,
-      CapGain: calc.capitalGains,
-      IncFromOS: calc.otherSources,
-      GrossTotInc: calc.grossTotalIncome,
-      Deductions: calc.deductions,
-      TotInc: calc.taxableIncome,
-    },
-    PartB_TTI: {
-      TaxPayableOnTotInc: calc.taxBeforeRebate,
-      Rebate87A: calc.rebate,
-      Surcharge: calc.surcharge,
-      EducationCess: calc.cess,
-      GrossTaxLiability: calc.totalTax,
-      TDS: calc.tds,
-      AdvanceTax: calc.advanceTax,
-      SelfAssessmentTax: calc.selfAssessmentTax,
-      NetTaxLiability: Math.max(0, -calc.refundOrPayable),
-      RefundDue: Math.max(0, calc.refundOrPayable),
-    },
-    ScheduleBP: {
-      NatureOfBusiness: data.business.nature || data.profession.profession,
-      GrossTurnover: data.business.turnover || data.profession.grossReceipts,
-      PresumptiveInc44AD: calc.businessIncome,
-      PresumptiveInc44ADA: calc.professionIncome,
-    },
-    ScheduleHP: {
-      Properties: data.houseProperties,
-    },
-    ScheduleOS: {
-      Interest: data.otherIncome.filter((o) => o.kind.toLowerCase().includes("interest")).reduce((s, o) => s + o.amount, 0),
-      Dividend: data.otherIncome.filter((o) => o.kind.toLowerCase().includes("dividend")).reduce((s, o) => s + o.amount, 0),
-      Other: data.otherIncome.filter((o) => !/interest|dividend/i.test(o.kind)).reduce((s, o) => s + o.amount, 0),
-    },
-    ScheduleBA: {
-      Accounts: data.bankAccounts.map((b) => ({
-        IFSCCode: b.ifsc,
-        BankAccountNo: b.accountNumber,
-        UseForRefund: b.isPrimary ? "true" : "false",
-      })),
-    },
-    Verification: {
-      Declaration: "I, the taxpayer, have reviewed this return prepared with software assistance.",
-      Capacity: "SELF",
-      Place: "",
-      Date: created.slice(0, 10),
-    },
-  };
-  const json = { ITR: { [formKey]: body } };
+export type GeneratedItr = {
+  json: unknown;
+  digest: string;
+  calc: TaxComputation;
+  schemaVersion: string;
+  valid: boolean;
+  errors: Array<{ severity: string; message: string; field?: string; path?: string; explanation?: string; fixRoute?: string }>;
+  warnings: Array<{ severity: string; message: string; field?: string }>;
+  official: ReturnType<typeof validateITR4Json>;
+  blocked: boolean;
+};
+
+export function generateITRJson(data: NormalizedReturn, opts?: { generatedAt?: Date; returnId?: string }): GeneratedItr {
+  if (data.itrType !== "ITR-4") {
+    return {
+      json: null,
+      digest: "",
+      calc: mapItr4Official({ ...data, itrType: "ITR-4" }, opts?.generatedAt).calc,
+      schemaVersion: SCHEMA_VERSION,
+      valid: false,
+      blocked: true,
+      official: { valid: false, errors: [], warnings: [], schemaVersion: SCHEMA_VERSION, schemaMode: "OfficialSchema" },
+      errors: [
+        {
+          severity: "ERROR",
+          message: "ITR-3 preparation is currently in development. Filing JSON generation is not available yet.",
+          field: "itrType",
+        },
+      ],
+      warnings: [],
+    };
+  }
+  const business = businessValidate(data, opts?.returnId);
+  const { json, calc } = mapItr4Official(data, opts?.generatedAt);
+  const official = validateITR4Json(json, data.assessmentYear);
   const digest = createHash("sha256").update(JSON.stringify(json)).digest("hex");
-  (json.ITR as Record<string, { CreationInfo: { Digest: string } }>)[formKey].CreationInfo.Digest = digest;
-  return { json, digest, calc };
-}
-
-export function generateITRJson(data: NormalizedReturn) {
-  const field = validateReturn(data);
-  const { json, digest, calc } = mapToOfficialJson(data);
-  const schema = validateAgainstOfficialSchema(json, data.assessmentYear, data.itrType);
-  const blocking = [...field.issues, ...schema.errors].filter((i) => i.severity === "ERROR");
+  const errors = [
+    ...business.filter((b) => b.severity === "ERROR").map((b) => ({
+      severity: b.severity,
+      message: b.message,
+      field: b.field,
+      explanation: b.explanation,
+      fixRoute: b.fixRoute,
+    })),
+    ...official.errors.map((e) => ({
+      severity: "ERROR",
+      message: e.explanation,
+      field: e.field,
+      path: e.path,
+      explanation: e.message,
+    })),
+  ];
+  const warnings = business.filter((b) => b.severity !== "ERROR").map((b) => ({ severity: b.severity, message: b.message, field: b.field }));
+  const valid = canGenerateJson(business) && official.valid;
   return {
     json,
     digest,
     calc,
-    schemaVersion: SCHEMA_VERSION,
-    valid: blocking.length === 0 && schema.valid,
-    errors: blocking,
-    warnings: [...field.issues, ...schema.warnings].filter((i) => i.severity !== "ERROR"),
+    schemaVersion: official.schemaVersion,
+    valid,
+    blocked: !valid,
+    errors,
+    warnings,
+    official,
   };
+}
+
+/** @deprecated adapter mapping removed from production. */
+export function mapToOfficialJson(data: NormalizedReturn) {
+  return mapItr4Official(data);
 }

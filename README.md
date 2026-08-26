@@ -30,7 +30,11 @@ Versioned under `src/lib/tax-rules/ay2026_27/`.
 
 Sources: [ITD tax rates](https://www.incometaxindia.gov.in/w/%E2%80%8Btax-rates-1), [ITR-4 FAQs](https://www.incometax.gov.in/iec/foportal/help/all-topics/e-filing-services/file-itr-4-sugam-online).
 
-The bundled JSON schema is an **adapter**. Drop the ITD-published schema into `src/lib/itr-json/schemas/` when you download it from the e-filing portal.
+**Official schema (production authority):** `src/lib/itr-json/schemas/ay2026_27/itr4/schema.json`  
+ITR-4_2026_Main_V1.1.json, released 30 Jun 2026, SchemaVer `Ver1.0`, SHA-256 in `metadata.json`.  
+Validated with **AJV draft-04**. The old adapter schema is in `.../development/adapter.schema.json` and is **not** used in production.
+
+**ITR-3 is not filing-ready.** JSON download is disabled for ITR-3.
 
 ## Run locally
 
@@ -70,18 +74,37 @@ npm run build
 ## Architecture
 
 ```
-Internal tax model
-  → AY 2026-27 rules (eligibility, tax, deductions)
-  → ITR mapper
-  → adapter / official schema validation
-  → JSON file (hashed, stored, not mutated)
+User data → Normalized tax model
+  → AY 2026–27 tax engine (normal vs special-rate; 44AD/44ADA; 87A; cess)
+  → ITR-4 official mapper
+  → AJV validation against official schema
+  → Business + tax-calc validation
+  → SHA-256 JSON (CURRENT; prior files SUPERSEDED)
 ```
+
+JSON generation is gated: profile, eligibility, no ERROR issues, official schema pass, bank details, verification. There is no `FILED` status. Maximum: `JSON_GENERATED` / Ready for upload.
 
 Providers (`src/lib/providers`): AI, OCR, storage, payments — swap implementations without touching UI.
 
-## Next recommended step
+## Tests
 
-1. Load the official ITR-4 JSON schema from the e-filing downloads page into the validator.
-2. Connect an S3-compatible bucket for documents.
-3. Add a real extraction provider behind `DocumentExtractionProvider`.
-4. Complete ITR-3 Schedule BP / P&L / BS mapping.
+`npm test` — eligibility, tax engine, deductions, presumptive, official-schema AJV, golden JSON, rounding, authz.
+
+Golden files: `tests/fixtures/itr4/ay2026_27/*.json`
+
+## Production database
+
+Local: SQLite (`DATABASE_URL=file:./prisma/dev.db`).  
+Production: PostgreSQL. Change `provider` in `prisma/schema.prisma` to `postgresql`, set `DATABASE_URL`, run `docker compose up -d` and `npx prisma migrate deploy`. Models use portable types only.
+
+## Known limitations
+
+- Official CBDT *business* validation rules PDF is referenced, not executed as a rules engine (JSON Schema + our deterministic rules are applied).
+- 44AE vehicles UI is partial.
+- ITR-3 JSON is disabled.
+- Document OCR is unconfigured; extracted values never auto-file.
+- No portal filing.
+
+## Next phase
+
+Document extraction (AIS/26AS/Form 16) with human confirmation, then ITR-3 filing-grade mapping.

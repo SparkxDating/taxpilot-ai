@@ -3,6 +3,8 @@ generator client {
 }
 
 datasource db {
+  // Local default is SQLite. Production: set provider = "postgresql"
+  // and DATABASE_URL to a Postgres URL. Models use portable types only.
   provider = "sqlite"
   url      = env("DATABASE_URL")
 }
@@ -76,6 +78,9 @@ model TaxReturn {
   calculationJson      String   @default("{}")
   form10IeaAck         String   @default("")
   form10IeaDate        DateTime?
+  verificationPlace    String   @default("")
+  dataFingerprint      String   @default("")
+  schemaVersion        String   @default("")
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
 
@@ -136,16 +141,19 @@ model Document {
 }
 
 model DocumentExtraction {
-  id           String   @id @default(cuid())
-  documentId   String
-  fieldKey     String
+  id             String    @id @default(cuid())
+  documentId     String
+  fieldKey       String
   extractedValue String
-  numericValue Int?
-  confidence   Float
-  pageRef      String   @default("")
-  status       String   @default("NEEDS_REVIEW")
-  extractedAt  DateTime @default(now())
-  document     Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  numericValue   Int?
+  confidence     Float
+  pageRef        String    @default("")
+  sourceLocation String    @default("")
+  status         String    @default("NEEDS_REVIEW")
+  confirmed      Boolean   @default(false)
+  confirmedAt    DateTime?
+  extractedAt    DateTime  @default(now())
+  document       Document  @relation(fields: [documentId], references: [id], onDelete: Cascade)
   @@index([documentId, fieldKey])
 }
 
@@ -197,12 +205,22 @@ model ProfessionalIncome {
 }
 
 model CapitalGain {
-  id          String   @id @default(cuid())
-  returnId    String
-  kind        String
-  section     String   @default("112A")
-  amount      Int      @default(0)
-  taxReturn   TaxReturn @relation(fields: [returnId], references: [id], onDelete: Cascade)
+  id                 String   @id @default(cuid())
+  returnId           String
+  kind               String
+  section            String   @default("112A")
+  amount             Int      @default(0)
+  assetType          String   @default("")
+  identifier         String   @default("")
+  acquisitionDate    DateTime?
+  saleDate           DateTime?
+  saleConsideration  Int      @default(0)
+  acquisitionCost    Int      @default(0)
+  improvementCost    Int      @default(0)
+  transferExpenses   Int      @default(0)
+  holdingPeriodDays  Int      @default(0)
+  specialRate        Float?
+  taxReturn          TaxReturn @relation(fields: [returnId], references: [id], onDelete: Cascade)
 }
 
 model HouseProperty {
@@ -225,24 +243,30 @@ model OtherIncome {
 }
 
 model Deduction {
-  id        String   @id @default(cuid())
-  returnId  String
-  section   String
-  amount    Int      @default(0)
-  notes     String   @default("")
-  taxReturn TaxReturn @relation(fields: [returnId], references: [id], onDelete: Cascade)
+  id               String   @id @default(cuid())
+  returnId         String
+  section          String
+  amount           Int      @default(0)
+  eligibleAmount   Int      @default(0)
+  disallowedAmount Int      @default(0)
+  reason           String   @default("")
+  notes            String   @default("")
+  taxReturn        TaxReturn @relation(fields: [returnId], references: [id], onDelete: Cascade)
   @@index([returnId, section])
 }
 
 model TDSEntry {
-  id           String   @id @default(cuid())
-  returnId     String
-  source       String   @default("26AS")
-  sectionCode  String   @default("")
-  tan          String   @default("")
-  deductorName String   @default("")
-  amount       Int      @default(0)
-  taxReturn    TaxReturn @relation(fields: [returnId], references: [id], onDelete: Cascade)
+  id                 String   @id @default(cuid())
+  returnId           String
+  source             String   @default("26AS")
+  sectionCode        String   @default("")
+  tan                String   @default("")
+  deductorName       String   @default("")
+  amount             Int      @default(0)
+  grossAmount        Int      @default(0)
+  kind               String   @default("TDS")
+  verificationStatus String   @default("UNVERIFIED")
+  taxReturn          TaxReturn @relation(fields: [returnId], references: [id], onDelete: Cascade)
 }
 
 model TaxPayment {
@@ -261,7 +285,8 @@ model BankAccount {
   returnId      String
   ifsc          String
   accountNumber String
-  accountType   String   @default("SAVINGS")
+  accountType   String   @default("SB")
+  bankName      String   @default("")
   isPrimary     Boolean  @default(true)
   taxReturn     TaxReturn @relation(fields: [returnId], references: [id], onDelete: Cascade)
 }
@@ -323,6 +348,7 @@ model Answer {
 model ValidationError {
   id          String   @id @default(cuid())
   returnId    String
+  code        String   @default("")
   level       String
   severity    String
   section     String
@@ -345,8 +371,10 @@ model ITRJsonFile {
   fileHash       String
   storagePath    String
   valid          Boolean  @default(false)
+  status         String   @default("CURRENT")
+  versionId      String   @default("")
   taxReturn      TaxReturn @relation(fields: [returnId], references: [id], onDelete: Cascade)
-  @@index([returnId])
+  @@index([returnId, status])
 }
 
 model AuditLog {

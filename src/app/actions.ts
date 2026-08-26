@@ -269,27 +269,35 @@ export async function generateJsonAction(formData: FormData) {
   if (!ret || !canAccessReturn(ret.userId, session)) redirect("/dashboard");
   const data = await loadNormalized(id, session.role === "ADMIN" ? undefined : session.userId);
   if (!data) redirect("/dashboard");
-  const result = generateITRJson(data);
+  if (data.itrType !== "ITR-4") redirect(`/returns/${id}/summary?error=itr3`);
+  const result = generateITRJson(data, { returnId: id, generatedAt: new Date() });
+  if (!result.valid || !result.json) {
+    await prisma.taxReturn.update({ where: { id }, data: { status: "VALIDATION_FAILED" } });
+    redirect(`/returns/${id}/validate?blocked=1`);
+  }
   const payload = JSON.stringify(result.json, null, 2);
   const dir = path.join(process.cwd(), "storage", "json", id);
   await mkdir(dir, { recursive: true });
-  const file = path.join(dir, `${data.itrType}-${Date.now()}.json`);
+  const file = path.join(dir, `ITR-4-${Date.now()}.json`);
   await writeFile(file, payload, "utf8");
+  await prisma.iTRJsonFile.updateMany({ where: { returnId: id, status: "CURRENT" }, data: { status: "SUPERSEDED" } });
   await prisma.iTRJsonFile.create({
     data: {
       returnId: id,
       assessmentYear: data.assessmentYear,
-      itrType: data.itrType,
+      itrType: "ITR-4",
       schemaVersion: result.schemaVersion,
       fileHash: result.digest,
       storagePath: file,
-      valid: result.valid,
+      valid: true,
+      status: "CURRENT",
+      versionId: result.digest.slice(0, 12),
     },
   });
-  await prisma.taxReturn.update({ where: { id }, data: { status: result.valid ? "JSON_READY" : "VALIDATION_FAILED" } });
-  await audit({ userId: session.userId, returnId: id, action: "json.generated", entity: "ITRJsonFile", metadata: { valid: result.valid, hash: result.digest } });
-  revalidatePath(`/returns/${id}/summary`);
-  redirect(`/returns/${id}/summary?generated=1`);
+  await prisma.taxReturn.update({ where: { id }, data: { status: "JSON_GENERATED", schemaVersion: result.schemaVersion } });
+  await audit({ userId: session.userId, returnId: id, action: "json.generated", entity: "ITRJsonFile", metadata: { hash: result.digest } });
+  revalidatePath(`/returns/${id}/json`);
+  redirect(`/returns/${id}/json`);
 }
 
 export async function uploadDocumentAction(formData: FormData) {

@@ -26,3 +26,15 @@ export function getOcrProvider(): DocumentExtractionProvider {
 }
 
 export const MIN_AUTO_INSERT_CONFIDENCE = 0.92;
+
+export type ExtractionStatus = "UPLOADED" | "PROCESSING" | "EXTRACTED" | "NEEDS_REVIEW" | "CONFIRMED" | "FAILED";
+
+export type ExtractionField = {
+  field: string;
+  value: string;
+  confidence: number;
+  sourceDocument: string;
+  sourceLocation: string;
+  confirmed: boolean;
+  confirmedAt?: string;
+};

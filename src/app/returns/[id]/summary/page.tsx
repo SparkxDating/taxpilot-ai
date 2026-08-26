@@ -62,10 +62,18 @@ export default async function SummaryPage({ params, searchParams }: { params: Pr
           <Badge tone={errors.length ? "err" : "ok"}>{errors.length ? `${errors.length} validation errors` : "No blocking errors"}</Badge>
           <Badge>{ret.documents.length} documents</Badge>
         </div>
-        <form action={generateJsonAction} className="mt-6">
-          <input type="hidden" name="returnId" value={id} />
-          <Button type="submit">Generate ITR JSON</Button>
-        </form>
+        {errors.length || ret.itrType !== "ITR-4" ? (
+          <p className="sans mt-6 text-sm text-red-800">
+            {ret.itrType !== "ITR-4"
+              ? "ITR-3 preparation is currently in development. Filing JSON generation is not available yet."
+              : "Unable to generate the return. Please correct the highlighted issues."}
+          </p>
+        ) : (
+          <form action={generateJsonAction} className="mt-6">
+            <input type="hidden" name="returnId" value={id} />
+            <Button type="submit">Generate ITR JSON</Button>
+          </form>
+        )}
         {ret.jsonFiles[0] ? (
           <Link href={`/api/returns/${id}/download-json`} className="sans mt-4 inline-block text-sm text-[#1f4e46]">
             Download ITR JSON

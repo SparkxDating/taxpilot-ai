@@ -6,6 +6,7 @@ import { ReturnNav } from "@/components/return-nav";
 import { Badge, Button, Card } from "@/components/ui";
 import { loadNormalized } from "@/lib/tax/load";
 import { generateITRJson } from "@/lib/itr-json/mapper";
+import { ValidationIssue } from "@/components/validation-issue";
 import Link from "next/link";
 
 export default async function ValidatePage({ params }: { params: Promise<{ id: string }> }) {
@@ -44,17 +45,17 @@ export default async function ValidatePage({ params }: { params: Promise<{ id: s
         </div>
         <div className="mt-6 space-y-3">
           {ret.validationErrors.map((e) => (
-            <Card key={e.id}>
-              <Badge tone={e.severity === "ERROR" ? "err" : e.severity === "WARNING" ? "warn" : "muted"}>{e.severity}</Badge>
-              <p className="mt-2">{e.message}</p>
-              <p className="sans mt-1 text-sm text-[#5c6773]">{e.suggestion}</p>
-              <Link href={e.href || `/returns/${id}/income`} className="sans mt-2 inline-block text-sm text-[#1f4e46]">
-                Fix this →
-              </Link>
-            </Card>
+            <ValidationIssue
+              key={e.id}
+              severity={e.severity as "ERROR" | "WARNING" | "INFO"}
+              title={e.section}
+              message={e.message}
+              suggestion={e.suggestion}
+              href={e.href || `/returns/${id}/income`}
+            />
           ))}
         </div>
-        {generated?.valid ? <p className="sans mt-4 text-sm text-emerald-800">Adapter schema validation passed.</p> : null}
+        {generated?.official.valid ? <p className="sans mt-4 text-sm text-emerald-800">Official AY 2026–27 schema validation passed.</p> : null}
         <Link href={`/returns/${id}/summary`} className="mt-6 inline-block">
           <Button>Go to summary</Button>
         </Link>

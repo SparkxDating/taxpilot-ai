@@ -1,0 +1,81 @@
+import { getSession } from "@/lib/auth";
+import { prisma } from "@/lib/db";
+import { notFound, redirect } from "next/navigation";
+import { SiteHeader } from "@/components/site-header";
+import { ReturnNav } from "@/components/return-nav";
+import { Button, Card, Disclaimer } from "@/components/ui";
+import { generateJsonAction } from "@/app/actions";
+import { loadNormalized } from "@/lib/tax/load";
+import { generateITRJson } from "@/lib/itr-json/mapper";
+import Link from "next/link";
+
+export default async function JsonPage({ params }: { params: Promise<{ id: string }> }) {
+  const session = await getSession();
+  if (!session) redirect("/login");
+  const { id } = await params;
+  const ret = await prisma.taxReturn.findFirst({
+    where: { id, userId: session.userId },
+    include: { jsonFiles: { orderBy: { generatedAt: "desc" }, take: 3 }, validationErrors: true },
+  });
+  if (!ret) notFound();
+  const data = await loadNormalized(id, session.userId);
+  const preview = data ? generateITRJson(data, { returnId: id }) : null;
+  const current = ret.jsonFiles.find((f) => f.status === "CURRENT");
+  const errors = ret.validationErrors.filter((e) => e.severity === "ERROR");
+  const canGen = ret.itrType === "ITR-4" && errors.length === 0 && preview?.official.valid && preview.valid;
+  return (
+    <div>
+      <SiteHeader authed name={session.name} />
+      <div className="mx-auto max-w-3xl px-6 py-8">
+        <ReturnNav id={id} current="json" />
+        <h1 className="text-3xl">ITR JSON</h1>
+        {ret.itrType !== "ITR-4" ? (
+          <Card className="mt-6">ITR-3 preparation is currently in development. Filing JSON generation is not available yet.</Card>
+        ) : (
+          <>
+            <Card className="mt-6 sans text-sm space-y-1">
+              <p>ITR type: {ret.itrType}</p>
+              <p>Assessment year: {ret.assessmentYear}</p>
+              <p>Schema version: {preview?.schemaVersion || ret.schemaVersion || "Ver1.0"}</p>
+              <p>Generated at: {current?.generatedAt.toISOString() || "Not generated"}</p>
+              <p>JSON hash: {current?.fileHash || "—"}</p>
+              <p>Status: {current ? "JSON Generated" : ret.status}</p>
+            </Card>
+            <div className="mt-4 space-y-2">
+              <p>{preview?.official.valid ? "✓ Official schema validation passed" : "✕ Official schema validation failed"}</p>
+              <p>{errors.length === 0 ? "✓ Business validation passed" : "✕ Business validation failed"}</p>
+              <p>{preview?.calc ? "✓ Tax calculation validation passed" : "✕ Tax calculation missing"}</p>
+            </div>
+            {!canGen ? (
+              <Card className="mt-4">
+                <p>Unable to generate the return. Please correct the highlighted issues.</p>
+                <Link href={`/returns/${id}/validate`} className="sans mt-2 inline-block text-sm text-[#1f4e46]">
+                  Open validation
+                </Link>
+              </Card>
+            ) : (
+              <form action={generateJsonAction} className="mt-6">
+                <input type="hidden" name="returnId" value={id} />
+                <Button type="submit">Generate ITR JSON</Button>
+              </form>
+            )}
+            {current?.valid ? (
+              <Link href={`/api/returns/${id}/download-json`} className="mt-4 inline-block">
+                <Button variant="outline">Download ITR JSON</Button>
+              </Link>
+            ) : null}
+            {ret.jsonFiles.some((f) => f.status === "SUPERSEDED") ? (
+              <p className="sans mt-3 text-xs text-[#5c6773]">Earlier JSON files are marked SUPERSEDED after the return changed.</p>
+            ) : null}
+            <p className="sans mt-6 text-sm text-[#5c6773]">
+              This file is prepared for upload through the Income Tax Department’s applicable filing workflow. TaxPilot AI does not itself file the return.
+            </p>
+            <div className="mt-6">
+              <Disclaimer />
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
