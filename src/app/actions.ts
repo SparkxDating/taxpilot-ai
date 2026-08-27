@@ -14,7 +14,10 @@ import { getStorage, newStorageKey } from "@/lib/providers/storage";
 import { documentSha256, persistExtraction } from "@/lib/documents/persistExtraction";
 import { isAllowedUpload, sniffMime } from "@/lib/documents/magic";
 import { applyVerifiedFactsToTaxModel } from "@/lib/documents/applyVerified";
+import { applyConflictResolution, rebuildDocumentConflicts, openConflictCount } from "@/lib/documents/conflicts";
 import { DOCUMENT_TYPES } from "@/lib/documents/types";
+import { canAccessConflict, canAccessTaxFact } from "@/lib/authz";
+import { parseAmount } from "@/lib/documents/rupees";
 import { mkdir, writeFile } from "fs/promises";
 import path from "path";
 
@@ -311,6 +314,10 @@ export async function generateJsonAction(formData: FormData) {
   const data = await loadNormalized(id, session.role === "ADMIN" ? undefined : session.userId);
   if (!data) redirect("/dashboard");
   if (data.itrType !== "ITR-4") redirect(`/returns/${id}/summary?error=itr3`);
+  if ((await openConflictCount(id)) > 0) {
+    await prisma.taxReturn.update({ where: { id }, data: { status: "VALIDATION_FAILED" } });
+    redirect(`/returns/${id}/validate?blocked=1`);
+  }
   const result = generateITRJson(data, { returnId: id, generatedAt: new Date() });
   if (!result.valid || !result.json) {
     await prisma.taxReturn.update({ where: { id }, data: { status: "VALIDATION_FAILED" } });
@@ -354,10 +361,11 @@ export async function uploadDocumentAction(formData: FormData) {
   const gate = isAllowedUpload(mime, file.size);
   if (!gate.ok) redirect(`/returns/${id}/documents?error=${gate.code.toLowerCase()}`);
   const hash = documentSha256(bytes);
+  const force = String(formData.get("force") || "") === "1";
   const dup = await prisma.document.findFirst({
     where: { userId: session.userId, returnId: id, sha256: hash, deletedAt: null },
   });
-  if (dup) redirect(`/returns/${id}/documents/${dup.id}?duplicate=1`);
+  if (dup && !force) redirect(`/returns/${id}/documents/${dup.id}?duplicate=1`);
   const key = newStorageKey(session.userId, file.name);
   await getStorage().put(key, bytes, mime);
   const declared = String(formData.get("kind") || "OTHER");
@@ -395,9 +403,18 @@ export async function reviewExtractionAction(formData: FormData) {
   const extractionId = String(formData.get("extractionId") || "");
   const decision = String(formData.get("decision") || "");
   const row = await prisma.documentExtraction.findUnique({ where: { id: extractionId }, include: { document: true } });
-  if (!row || row.document.userId !== session.userId) return;
+  if (!row || !canAccessTaxFact(row.document.userId, session)) return;
+  const fact = await prisma.taxFact.findFirst({
+    where: { sourceDocumentId: row.documentId, field: row.fieldKey },
+  });
+  if (fact?.status === "CONFLICT" && decision !== "reject") {
+    const rid = row.document.returnId;
+    if (rid) redirect(`/returns/${rid}/documents?conflict=1`);
+    return;
+  }
   const edited = String(formData.get("edited") || "").trim();
   const nextValue = edited || row.extractedValue;
+  const numeric = parseAmount(nextValue);
   await prisma.documentExtraction.update({
     where: { id: extractionId },
     data: {
@@ -409,10 +426,8 @@ export async function reviewExtractionAction(formData: FormData) {
       editedBy: edited && edited !== row.extractedValue ? session.userId : row.editedBy,
       editedAt: edited && edited !== row.extractedValue ? new Date() : row.editedAt,
       extractedValue: nextValue,
+      numericValue: numeric ?? row.numericValue,
     },
-  });
-  const fact = await prisma.taxFact.findFirst({
-    where: { sourceDocumentId: row.documentId, field: row.fieldKey },
   });
   if (fact) {
     const verified = decision !== "reject";
@@ -424,6 +439,7 @@ export async function reviewExtractionAction(formData: FormData) {
         verifiedAt: verified ? new Date() : null,
         status: decision === "reject" ? "REJECTED" : "VERIFIED",
         value: nextValue,
+        numericValue: numeric ?? fact.numericValue,
         originalValue: fact.originalValue || fact.value,
         editedValue: edited && edited !== fact.value ? edited : fact.editedValue,
       },
@@ -436,17 +452,89 @@ export async function reviewExtractionAction(formData: FormData) {
     entity: "DocumentExtraction",
     entityId: row.id,
   });
+  const rid = row.document.returnId;
+  if (rid) await rebuildDocumentConflicts(rid);
   const remaining = await prisma.taxFact.count({
-    where: { sourceDocumentId: row.documentId, status: { in: ["PENDING", "CONFLICT"] } },
+    where: { sourceDocumentId: row.documentId, status: { in: ["AI_EXTRACTED", "PENDING", "CONFLICT"] } },
   });
   if (remaining === 0 && row.documentId) {
     await prisma.document.update({ where: { id: row.documentId }, data: { status: decision === "reject" ? "NEEDS_REVIEW" : "VERIFIED" } });
   }
-  const rid = row.document.returnId;
   if (rid) {
     revalidatePath(`/returns/${rid}/documents`);
     revalidatePath(`/returns/${rid}/documents/${row.documentId}`);
   }
+}
+
+export async function resolveConflictAction(formData: FormData) {
+  const session = await getSession();
+  if (!session) return;
+  const conflictId = String(formData.get("conflictId") || "");
+  const row = await prisma.documentConflict.findUnique({
+    where: { id: conflictId },
+    include: { taxReturn: true },
+  });
+  if (!row || !canAccessConflict(row.taxReturn.userId, session)) return;
+  if (row.status !== "OPEN") {
+    revalidatePath(`/returns/${row.returnId}/documents`);
+    return;
+  }
+  const facts = JSON.parse(row.factsJson || "[]") as Array<{
+    id: string;
+    documentType: string;
+    field: string;
+    normalizedTaxField: string;
+    value: string;
+    numericValue: number | null;
+    sourceDocumentId: string;
+  }>;
+  const applied = applyConflictResolution({
+    resolution: String(formData.get("resolution") || ""),
+    facts,
+    chosenFactId: String(formData.get("factId") || ""),
+    manualValue: String(formData.get("value") || ""),
+    reason: String(formData.get("reason") || ""),
+  });
+  if (!applied.ok) return;
+  await prisma.documentConflict.update({
+    where: { id: row.id },
+    data: {
+      status: applied.status,
+      resolution: applied.resolution,
+      resolvedValue: applied.resolvedValue,
+      chosenFactId: applied.chosenFactId,
+      resolvedBy: session.userId,
+      resolvedAt: new Date(),
+      reason: String(formData.get("reason") || ""),
+    },
+  });
+  if (applied.verifyId) {
+    await prisma.taxFact.update({
+      where: { id: applied.verifyId },
+      data: {
+        status: "VERIFIED",
+        verified: true,
+        verifiedBy: session.userId,
+        verifiedAt: new Date(),
+        conflictWithId: row.id,
+      },
+    });
+  }
+  for (const id of applied.rejectIds) {
+    await prisma.taxFact.update({
+      where: { id },
+      data: { status: "REJECTED", verified: false, verifiedBy: "", verifiedAt: null, conflictWithId: row.id },
+    });
+  }
+  await audit({
+    userId: session.userId,
+    returnId: row.returnId,
+    action: "CONFLICT_RESOLVED",
+    entity: "DocumentConflict",
+    entityId: row.id,
+    metadata: { resolution: applied.resolution, field: row.field },
+  });
+  revalidatePath(`/returns/${row.returnId}/documents`);
 }
 
 export async function applyVerifiedDocumentsAction(formData: FormData) {
@@ -467,10 +555,14 @@ export async function classifyBankTxAction(formData: FormData) {
   const txId = String(formData.get("txId") || "");
   const category = String(formData.get("category") || "UNKNOWN");
   const row = await prisma.bankTransaction.findUnique({ where: { id: txId }, include: { document: true } });
-  if (!row || row.document.userId !== session.userId) return;
+  if (!row || !canAccessTaxFact(row.document.userId, session)) return;
   await prisma.bankTransaction.update({
     where: { id: txId },
-    data: { category, verified: category !== "UNKNOWN" },
+    data: {
+      verifiedCategory: category,
+      category,
+      verified: true,
+    },
   });
   revalidatePath(`/returns/${row.returnId}/documents/${row.documentId}`);
 }

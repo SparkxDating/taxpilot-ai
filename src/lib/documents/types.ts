@@ -24,14 +24,20 @@ export function confidenceLevel(n: number): "HIGH" | "MEDIUM" | "LOW" {
   return "LOW";
 }
 
+export type PdfPage = { pageNumber: number; text: string };
+
 export type ExtractedField = {
   field: string;
+  normalizedTaxField: string;
+  documentType: DocumentType;
   value: string | null;
   numericValue?: number | null;
   confidence: number;
-  sourcePage: string;
+  sourcePage: number | null;
   sourceText: string;
-  extractionMethod: "local" | "csv" | "filename" | "placeholder";
+  extractionMethod: "local" | "csv" | "xlsx" | "filename" | "placeholder";
+  originalCategory?: string;
+  warning?: string;
 };
 
 export type BankRow = {
@@ -41,14 +47,18 @@ export type BankRow = {
   credit: number;
   balance: number;
   reference: string;
-  sourcePage: string;
-  category: string;
+  sourcePage: number | null;
+  rawCategory: string;
+  suggestedCategory: string;
+  verifiedCategory: string | null;
 };
 
 export type ExtractionResult = {
   kind: DocumentType;
+  pages: PdfPage[];
   fields: ExtractedField[];
   transactions: BankRow[];
+  warnings: string[];
   errorCode?: string;
   errorMessage?: string;
 };

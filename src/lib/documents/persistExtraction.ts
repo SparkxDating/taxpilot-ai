@@ -1,7 +1,9 @@
 import { createHash } from "crypto";
 import { prisma } from "@/lib/db";
 import { audit } from "@/lib/audit";
+import { rebuildDocumentConflicts } from "./conflicts";
 import { runExtraction } from "./pipeline";
+import { pageRef } from "./rupees";
 import { HIGH } from "./types";
 
 export function documentSha256(bytes: Buffer) {
@@ -17,7 +19,7 @@ export async function persistExtraction(opts: {
   mimeType: string;
   declaredKind?: string;
 }) {
-  const result = runExtraction({
+  const result = await runExtraction({
     bytes: opts.bytes,
     fileName: opts.fileName,
     mimeType: opts.mimeType,
@@ -30,11 +32,6 @@ export async function persistExtraction(opts: {
 
   for (const f of result.fields) {
     if (f.value == null) continue;
-    const existing = await prisma.taxFact.findFirst({
-      where: { returnId: opts.returnId, field: f.field, verified: true },
-    });
-    const conflict =
-      existing && existing.numericValue != null && f.numericValue != null && existing.numericValue !== f.numericValue;
     await prisma.documentExtraction.create({
       data: {
         documentId: opts.documentId,
@@ -43,25 +40,27 @@ export async function persistExtraction(opts: {
         originalValue: f.value,
         numericValue: f.numericValue ?? undefined,
         confidence: f.confidence,
-        pageRef: f.sourcePage,
+        pageRef: pageRef(f.sourcePage),
         sourceText: f.sourceText.slice(0, 500),
         extractionMethod: f.extractionMethod,
-        status: conflict ? "NEEDS_REVIEW" : f.confidence >= HIGH ? "EXTRACTED" : "NEEDS_REVIEW",
+        status: f.confidence >= HIGH ? "EXTRACTED" : "NEEDS_REVIEW",
       },
     });
     await prisma.taxFact.create({
       data: {
         returnId: opts.returnId,
         sourceDocumentId: opts.documentId,
+        documentType: f.documentType,
         field: f.field,
+        normalizedTaxField: f.normalizedTaxField,
         value: f.value,
         numericValue: f.numericValue ?? undefined,
         confidence: f.confidence,
-        sourcePage: f.sourcePage,
+        sourcePage: pageRef(f.sourcePage),
         sourceText: f.sourceText.slice(0, 500),
         originalValue: f.value,
-        status: conflict ? "CONFLICT" : "PENDING",
-        conflictWithId: conflict ? existing!.id : "",
+        status: "AI_EXTRACTED",
+        verified: false,
       },
     });
   }
@@ -78,15 +77,23 @@ export async function persistExtraction(opts: {
           credit: tx.credit,
           balance: tx.balance,
           reference: tx.reference,
-          sourcePage: tx.sourcePage,
-          category: tx.category,
+          sourcePage: pageRef(tx.sourcePage),
+          category: tx.suggestedCategory,
+          rawCategory: tx.rawCategory,
+          suggestedCategory: tx.suggestedCategory,
+          verifiedCategory: tx.verifiedCategory || "",
+          verified: false,
         },
       });
     }
   }
 
+  await rebuildDocumentConflicts(opts.returnId);
+
+  const warningCode = result.warnings[0] || "";
   const needsReview =
-    result.errorCode === "MANUAL_REVIEW_REQUIRED" ||
+    Boolean(result.errorCode) ||
+    Boolean(warningCode) ||
     result.fields.some((f) => f.value && f.confidence < HIGH) ||
     result.fields.length === 0;
   await prisma.document.update({
@@ -95,8 +102,8 @@ export async function persistExtraction(opts: {
       kind: result.kind,
       status: result.errorCode === "EXTRACTION_FAILED" ? "FAILED" : needsReview ? "NEEDS_REVIEW" : "EXTRACTED",
       processedAt: new Date(),
-      errorCode: result.errorCode || "",
-      errorMessage: result.errorMessage || "",
+      errorCode: result.errorCode || warningCode,
+      errorMessage: result.errorMessage || (warningCode ? warningCode : ""),
     },
   });
   await audit({
@@ -105,7 +112,7 @@ export async function persistExtraction(opts: {
     action: "EXTRACTED",
     entity: "Document",
     entityId: opts.documentId,
-    metadata: { kind: result.kind, fields: result.fields.length },
+    metadata: { kind: result.kind, fields: result.fields.length, warnings: result.warnings.length },
   });
   return result;
 }

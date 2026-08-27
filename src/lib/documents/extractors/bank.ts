@@ -12,44 +12,91 @@ export function classifyBankDescription(desc: string) {
   if (/refund/.test(d)) return "REFUND";
   if (/loan|emi/.test(d)) return "LOAN";
   if (/mutual|sip|investment/.test(d)) return "INVESTMENT";
+  if (/receipt|sales|customer/.test(d)) return "BUSINESS_RECEIPT";
   return UNKNOWN;
+}
+
+function row(desc: string, date: string, debit: number, credit: number, balance: number, reference: string, sourcePage: number | null): BankRow {
+  const suggested = classifyBankDescription(desc);
+  return {
+    date,
+    description: desc,
+    debit,
+    credit,
+    balance,
+    reference,
+    sourcePage,
+    rawCategory: UNKNOWN,
+    suggestedCategory: suggested,
+    verifiedCategory: null,
+  };
 }
 
 export function extractBankCsv(text: string): BankRow[] {
   const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
   if (lines.length < 2) return [];
-  const header = lines[0].toLowerCase();
-  if (!header.includes("date") || (!header.includes("desc") && !header.includes("narration") && !header.includes("particular"))) {
-    return [];
-  }
   const cols = lines[0].split(",").map((c) => c.trim().toLowerCase());
   const idx = (names: string[]) => cols.findIndex((c) => names.some((n) => c.includes(n)));
-  const iDate = idx(["date"]);
-  const iDesc = idx(["desc", "narration", "particular"]);
-  const iDebit = idx(["debit", "withdrawal"]);
-  const iCredit = idx(["credit", "deposit"]);
+  const iDate = idx(["txn date", "transaction date", "value date", "date"]);
+  const iDesc = idx(["narration", "particular", "description", "desc"]);
+  const iDebit = idx(["withdrawal", "debit"]);
+  const iCredit = idx(["deposit", "credit"]);
   const iBal = idx(["balance"]);
   const iRef = idx(["ref", "cheque", "utr"]);
+  if (iDate < 0 || iDesc < 0) return [];
   const rows: BankRow[] = [];
   for (const line of lines.slice(1)) {
     const p = line.split(",").map((x) => x.trim());
-    const desc = iDesc >= 0 ? p[iDesc] || "" : "";
-    rows.push({
-      date: iDate >= 0 ? p[iDate] || "" : "",
-      description: desc,
-      debit: parseAmount(iDebit >= 0 ? p[iDebit] : "") || 0,
-      credit: parseAmount(iCredit >= 0 ? p[iCredit] : "") || 0,
-      balance: parseAmount(iBal >= 0 ? p[iBal] : "") || 0,
-      reference: iRef >= 0 ? p[iRef] || "" : "",
-      sourcePage: "csv",
-      category: classifyBankDescription(desc),
-    });
+    const desc = p[iDesc] || "";
+    rows.push(
+      row(
+        desc,
+        p[iDate] || "",
+        parseAmount(iDebit >= 0 ? p[iDebit] : "") || 0,
+        parseAmount(iCredit >= 0 ? p[iCredit] : "") || 0,
+        parseAmount(iBal >= 0 ? p[iBal] : "") || 0,
+        iRef >= 0 ? p[iRef] || "" : "",
+        null,
+      ),
+    );
   }
   return rows;
 }
 
-export function extractBankText(text: string): BankRow[] {
-  const csv = extractBankCsv(text);
-  if (csv.length) return csv;
-  return [];
+export function extractBankRows(matrix: string[][], sourcePage: number | null): BankRow[] {
+  if (matrix.length < 2) return [];
+  const cols = matrix[0].map((c) => String(c || "").trim().toLowerCase());
+  const idx = (names: string[]) => cols.findIndex((c) => names.some((n) => c.includes(n)));
+  const iDate = idx(["txn date", "transaction date", "value date", "date"]);
+  const iDesc = idx(["narration", "particular", "description", "desc"]);
+  const iDebit = idx(["withdrawal", "debit"]);
+  const iCredit = idx(["deposit", "credit"]);
+  const iBal = idx(["balance"]);
+  const iRef = idx(["ref", "cheque", "utr"]);
+  if (iDate < 0 || iDesc < 0) return [];
+  const rows: BankRow[] = [];
+  for (const p of matrix.slice(1)) {
+    const desc = String(p[iDesc] || "");
+    rows.push(
+      row(
+        desc,
+        String(p[iDate] || ""),
+        parseAmount(iDebit >= 0 ? String(p[iDebit] || "") : "") || 0,
+        parseAmount(iCredit >= 0 ? String(p[iCredit] || "") : "") || 0,
+        parseAmount(iBal >= 0 ? String(p[iBal] || "") : "") || 0,
+        iRef >= 0 ? String(p[iRef] || "") : "",
+        sourcePage,
+      ),
+    );
+  }
+  return rows;
+}
+
+export async function extractBankXlsx(bytes: Buffer): Promise<BankRow[]> {
+  const XLSX = await import("xlsx");
+  const wb = XLSX.read(bytes, { type: "buffer" });
+  const sheet = wb.Sheets[wb.SheetNames[0]];
+  if (!sheet) return [];
+  const matrix = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false }) as string[][];
+  return extractBankRows(matrix, null);
 }

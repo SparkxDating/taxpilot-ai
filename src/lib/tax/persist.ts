@@ -110,8 +110,8 @@ export async function recomputeReturn(returnId: string) {
   completion = Math.min(100, completion);
   const itrType = eligWithIncome.recommended === "UNSUPPORTED" ? "ITR-3" : eligWithIncome.recommended;
   const facts = await prisma.taxFact.findMany({ where: { returnId } });
-  const form16Tds = facts.find((f) => f.field === "tds");
-  const aisTds = facts.find((f) => f.field === "ais.tds");
+  const form16Tds = facts.find((f) => f.normalizedTaxField === "salary.tds" || f.field === "tds");
+  const aisTds = facts.find((f) => f.normalizedTaxField === "tds.ais" || f.field === "ais.tds");
   if (
     form16Tds?.numericValue != null &&
     aisTds?.numericValue != null &&
@@ -126,6 +126,19 @@ export async function recomputeReturn(returnId: string) {
       field: "tds",
       message: "Form 16 TDS and AIS TDS do not match.",
       suggestion: "Resolve the document conflict before generating JSON.",
+      href: `/returns/${returnId}/documents`,
+    });
+  }
+  const openConflicts = await prisma.documentConflict.count({ where: { returnId, status: "OPEN" } });
+  if (openConflicts > 0) {
+    issues.push({
+      id: "DOCUMENT_CONFLICT_OPEN",
+      level: 2,
+      severity: "ERROR",
+      section: "Documents",
+      field: "conflicts",
+      message: "Unresolved document conflicts must be resolved before JSON generation.",
+      suggestion: "Choose a source, enter a value, or ignore with a reason on the documents page.",
       href: `/returns/${returnId}/documents`,
     });
   }
