@@ -8,13 +8,96 @@ import { extractionConfigKey, shouldReuseExtraction } from "./fallback";
 import { runExtraction } from "./pipeline";
 import { pageRef } from "./rupees";
 import { normalizedTaxField } from "./mapping";
-import { EXTRACTION_BUNDLE_VERSION, HIGH, type DocumentType, type ExtractedField, type ExtractionResult } from "./types";
+import {
+  EXTRACTION_BUNDLE_VERSION,
+  HIGH,
+  type AisTransaction,
+  type BankRow,
+  type DocumentType,
+  type ExtractedField,
+  type ExtractionResult,
+} from "./types";
 
 export function documentSha256(bytes: Buffer) {
   return createHash("sha256").update(bytes).digest("hex");
 }
 
-function fieldsFromRows(rows: Array<{ fieldKey: string; extractedValue: string; numericValue: number | null; confidence: number; pageRef: string; sourceText: string; extractionMethod: string }>, kind: string): ExtractedField[] {
+type StoredExtraction = {
+  fieldKey: string;
+  extractedValue: string;
+  numericValue: number | null;
+  confidence: number;
+  pageRef: string;
+  sourceText: string;
+  extractionMethod: string;
+};
+
+type StoredBank = {
+  date: string;
+  description: string;
+  debit: number;
+  credit: number;
+  balance: number;
+  reference: string;
+  sourcePage: string;
+  rawCategory: string;
+  suggestedCategory: string;
+  verifiedCategory: string;
+};
+
+export function encodeAisTxn(tx: AisTransaction) {
+  return JSON.stringify({
+    date: tx.date,
+    description: tx.description,
+    category: tx.category,
+    originalCategory: tx.originalCategory,
+    source: tx.source,
+    sourceText: tx.sourceText,
+    reportedValue: tx.reportedValue,
+  });
+}
+
+export function aisTransactionsFromRows(rows: StoredExtraction[]): AisTransaction[] {
+  return rows
+    .filter((r) => r.fieldKey.startsWith("txn."))
+    .sort((a, b) => a.fieldKey.localeCompare(b.fieldKey, undefined, { numeric: true }))
+    .map((r) => {
+      let meta: Partial<AisTransaction> & { reportedValue?: number | null } = {};
+      try {
+        meta = JSON.parse(r.sourceText) as typeof meta;
+      } catch {
+        meta = { sourceText: r.sourceText };
+      }
+      return {
+        date: meta.date || "",
+        description: meta.description || "",
+        amount: r.numericValue,
+        reportedValue: meta.reportedValue ?? r.numericValue,
+        source: meta.source || "AIS",
+        category: meta.category || "OTHER",
+        originalCategory: meta.originalCategory || "",
+        sourcePage: r.pageRef ? Number(r.pageRef) : null,
+        sourceText: meta.sourceText || r.sourceText,
+      };
+    });
+}
+
+export function bankRowsFromRecords(rows: StoredBank[]): BankRow[] {
+  return rows.map((tx) => ({
+    date: tx.date,
+    description: tx.description,
+    debit: tx.debit,
+    credit: tx.credit,
+    balance: tx.balance,
+    reference: tx.reference,
+    sourcePage: tx.sourcePage ? Number(tx.sourcePage) : null,
+    rawCategory: tx.rawCategory,
+    suggestedCategory: tx.suggestedCategory,
+    verifiedCategory: tx.verifiedCategory || null,
+  }));
+}
+
+function fieldsFromRows(rows: StoredExtraction[], kind: string): ExtractedField[] {
   const documentType = (kind as DocumentType) || "OTHER";
   return rows
     .filter((r) => !r.fieldKey.startsWith("txn."))
@@ -29,6 +112,28 @@ function fieldsFromRows(rows: Array<{ fieldKey: string; extractedValue: string; 
       sourceText: r.sourceText,
       extractionMethod: (r.extractionMethod as ExtractedField["extractionMethod"]) || "DETERMINISTIC",
     }));
+}
+
+export function reconstructCachedResult(doc: {
+  kind: string;
+  errorCode?: string;
+  errorMessage?: string;
+  extractorVersion?: string;
+  extractions: StoredExtraction[];
+  bankTx?: StoredBank[];
+}): ExtractionResult {
+  return {
+    kind: doc.kind as ExtractionResult["kind"],
+    pages: [],
+    fields: fieldsFromRows(doc.extractions, doc.kind),
+    transactions: bankRowsFromRecords(doc.bankTx || []),
+    aisTransactions: aisTransactionsFromRows(doc.extractions),
+    warnings: doc.errorCode ? [doc.errorCode] : [],
+    errorCode: doc.errorCode || undefined,
+    errorMessage: doc.errorMessage || undefined,
+    cached: true,
+    extractorVersion: doc.extractorVersion,
+  };
 }
 
 async function writeResult(opts: {
@@ -90,7 +195,7 @@ async function writeResult(opts: {
         numericValue: tx.amount,
         confidence: 0.7,
         pageRef: pageRef(tx.sourcePage),
-        sourceText: `${tx.date} ${tx.originalCategory} ${tx.sourceText}`.slice(0, 500),
+        sourceText: encodeAisTxn(tx).slice(0, 500),
         extractionMethod: "DETERMINISTIC",
         status: "NEEDS_REVIEW",
       },
@@ -166,7 +271,7 @@ export async function persistExtraction(opts: {
   const config = extractionConfigKey(getOcrProvider().configured, getDocumentAIProvider().configured);
   const doc = await prisma.document.findUnique({
     where: { id: opts.documentId },
-    include: { extractions: true },
+    include: { extractions: true, bankTx: true },
   });
   if (
     doc &&
@@ -176,21 +281,10 @@ export async function persistExtraction(opts: {
       storedConfig: doc.extractionConfig,
       currentVersion: EXTRACTION_BUNDLE_VERSION,
       currentConfig: config,
-      hasSuccessfulResult: Boolean(doc.processedAt) && doc.extractions.length > 0,
+      hasSuccessfulResult: Boolean(doc.processedAt) && (doc.extractions.length > 0 || doc.bankTx.length > 0),
     })
   ) {
-    return {
-      kind: doc.kind as ExtractionResult["kind"],
-      pages: [],
-      fields: fieldsFromRows(doc.extractions, doc.kind),
-      transactions: [],
-      aisTransactions: [],
-      warnings: doc.errorCode ? [doc.errorCode] : [],
-      errorCode: doc.errorCode || undefined,
-      errorMessage: doc.errorMessage || undefined,
-      cached: true,
-      extractorVersion: doc.extractorVersion,
-    } satisfies ExtractionResult;
+    return reconstructCachedResult(doc);
   }
 
   const hash = doc?.sha256 || documentSha256(opts.bytes);
@@ -204,22 +298,10 @@ export async function persistExtraction(opts: {
         processedAt: { not: null },
         NOT: { id: opts.documentId },
       },
-      include: { extractions: true },
+      include: { extractions: true, bankTx: true },
     });
-    if (twin?.extractions.length) {
-      const cloned: ExtractionResult = {
-        kind: twin.kind as ExtractionResult["kind"],
-        pages: [],
-        fields: fieldsFromRows(twin.extractions, twin.kind).map((f) => ({
-          ...f,
-          normalizedTaxField: f.normalizedTaxField,
-        })),
-        transactions: [],
-        aisTransactions: [],
-        warnings: [],
-        cached: true,
-        extractorVersion: EXTRACTION_BUNDLE_VERSION,
-      };
+    if (twin && (twin.extractions.length > 0 || twin.bankTx.length > 0)) {
+      const cloned = reconstructCachedResult(twin);
       return writeResult({ ...opts, result: cloned, cached: true, config });
     }
   }
