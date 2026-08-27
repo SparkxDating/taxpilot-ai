@@ -76,6 +76,7 @@ model TaxReturn {
   incomeSourcesJson    String   @default("[]")
   eligibilityJson      String   @default("{}")
   calculationJson      String   @default("{}")
+  preparationJson      String   @default("{}")
   form10IeaAck         String   @default("")
   form10IeaDate        DateTime?
   verificationPlace    String   @default("")

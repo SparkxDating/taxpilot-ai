@@ -1,21 +1,26 @@
 import { prisma } from "@/lib/db";
 import { recomputeReturn } from "@/lib/tax/persist";
-import { canEnterTaxModel, conflictGroup } from "./mapping";
+import {
+  importedEntry,
+  parsePreparation,
+  pickAuthoritativeFacts,
+  shouldOverwriteFromVerified,
+  type PreparationState,
+} from "./prefill";
 import { parseAmount } from "./rupees";
 
 /** Apply VERIFIED TaxFacts only. Never called from extractors. Never writes ITR JSON. */
 export async function applyVerifiedFactsToTaxModel(returnId: string) {
+  const ret = await prisma.taxReturn.findUnique({ where: { id: returnId } });
+  if (!ret) return;
+  const prep = parsePreparation(ret.preparationJson);
   const open = await prisma.documentConflict.findMany({ where: { returnId, status: "OPEN" } });
   const openGroups = new Set(open.map((c) => c.field));
   const all = await prisma.taxFact.findMany({ where: { returnId } });
-  const facts = all.filter(
-    (f) =>
-      canEnterTaxModel(f.status, f.verified) &&
-      f.normalizedTaxField &&
-      !openGroups.has(conflictGroup(f.normalizedTaxField)),
-  );
-  const num = (path: string) => facts.find((f) => f.normalizedTaxField === path)?.numericValue ?? null;
-  const str = (path: string) => facts.find((f) => f.normalizedTaxField === path)?.value || "";
+  const facts = pickAuthoritativeFacts(all, openGroups);
+  const factAt = (path: string) => facts.find((f) => f.normalizedTaxField === path);
+  const num = (path: string) => (shouldOverwriteFromVerified(prep.fields[path]) ? factAt(path)?.numericValue ?? null : null);
+  const str = (path: string) => (shouldOverwriteFromVerified(prep.fields[path]) ? factAt(path)?.value || "" : "");
 
   const manuals = await prisma.documentConflict.findMany({
     where: { returnId, status: "RESOLVED", resolution: "MANUAL_VALUE" },
@@ -68,7 +73,7 @@ export async function applyVerifiedFactsToTaxModel(returnId: string) {
     where: { returnId, verifiedCategory: "BUSINESS_RECEIPT" },
   });
   const receiptTotal = receipts.reduce((s, t) => s + t.credit, 0);
-  if (receiptTotal > 0) {
+  if (receiptTotal > 0 && shouldOverwriteFromVerified(prep.fields["business.receipts"])) {
     const existing = await prisma.businessIncome.findFirst({ where: { returnId } });
     if (existing) {
       await prisma.businessIncome.update({
@@ -82,5 +87,31 @@ export async function applyVerifiedFactsToTaxModel(returnId: string) {
     }
   }
 
+  const next: PreparationState = { fields: { ...prep.fields } };
+  const stamp = (path: string, value: string | number | null | undefined) => {
+    const fact = factAt(path);
+    if (!fact || !shouldOverwriteFromVerified(next.fields[path]) || value == null || value === "") return;
+    next.fields[path] = importedEntry(fact, String(value));
+  };
+  stamp("salary.grossSalary", gross);
+  stamp("salary.tds", tds);
+  stamp("salary.employerName", employerName);
+  stamp("salary.employerTan", employerTan);
+  stamp("salary.exemptions", exemptions);
+  stamp("salary.standardDeduction", standardDeduction);
+  stamp("income.interest", interest);
+  stamp("income.dividend", dividend);
+  if (receiptTotal > 0) {
+    next.fields["business.receipts"] = {
+      origin: "IMPORTED",
+      source: "BANK_STATEMENT",
+      sourceDocumentId: receipts[0]?.documentId || "",
+      sourcePage: null,
+      originalValue: String(receiptTotal),
+      currentValue: String(receiptTotal),
+      factId: "",
+    };
+  }
+  await prisma.taxReturn.update({ where: { id: returnId }, data: { preparationJson: JSON.stringify(next) } });
   await recomputeReturn(returnId);
 }

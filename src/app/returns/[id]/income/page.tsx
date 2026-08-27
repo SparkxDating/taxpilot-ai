@@ -4,9 +4,11 @@ import { notFound, redirect } from "next/navigation";
 import { SiteHeader } from "@/components/site-header";
 import { ReturnNav } from "@/components/return-nav";
 import { Button, Card, Input, Label } from "@/components/ui";
-import { saveIncomeAction } from "@/app/actions";
+import { resetImportedFieldAction, saveIncomeAction } from "@/app/actions";
 import { json } from "@/lib/utils";
 import { CODE_AD, CODE_ADA } from "@/lib/itr-json/ay2026_27/itr4/natureCodes";
+import { overviewFromRecords, parsePreparation } from "@/lib/documents/prefill";
+import { PrefillNote, PrepareSummary } from "@/components/prepare-summary";
 
 export default async function IncomePage({ params }: { params: Promise<{ id: string }> }) {
   const session = await getSession();
@@ -14,7 +16,21 @@ export default async function IncomePage({ params }: { params: Promise<{ id: str
   const { id } = await params;
   const ret = await prisma.taxReturn.findFirst({
     where: { id, userId: session.userId },
-    include: { salary: true, business: true, professional: true, otherIncomes: true, houseProperties: true, profitLoss: true, balanceSheet: true },
+    include: {
+      salary: true,
+      business: true,
+      professional: true,
+      otherIncomes: true,
+      houseProperties: true,
+      profitLoss: true,
+      balanceSheet: true,
+      documents: true,
+      taxFacts: true,
+      documentConflicts: true,
+      bankAccounts: true,
+      validationErrors: true,
+      user: { include: { profile: true } },
+    },
   });
   if (!ret) notFound();
   const sources = json<string[]>(ret.incomeSourcesJson, []);
@@ -23,12 +39,30 @@ export default async function IncomePage({ params }: { params: Promise<{ id: str
   const p = ret.professional[0];
   const hp = ret.houseProperties[0];
   const interest = ret.otherIncomes.find((o) => o.kind === "Interest");
+  const dividend = ret.otherIncomes.find((o) => o.kind === "Dividend");
+  const prep = parsePreparation(ret.preparationJson);
+  const overview = overviewFromRecords(id, {
+    documents: ret.documents,
+    facts: ret.taxFacts,
+    openConflicts: ret.documentConflicts.filter((c) => c.status === "OPEN"),
+    prep,
+    hasPan: Boolean(ret.user.profile?.pan),
+    salarySources: sources.some((x) => x.includes("SALARY")),
+    hasSalary: Boolean(s?.grossSalary),
+    businessSources: sources.some((x) => ["BUSINESS", "FREELANCING", "PROFESSION"].includes(x)),
+    hasBusiness: Boolean(b?.turnover || p?.grossReceipts),
+    hasBank: ret.bankAccounts.length > 0,
+    validationErrors: ret.validationErrors.filter((e) => e.severity === "ERROR").length,
+  });
   return (
     <div>
       <SiteHeader authed name={session.name} />
       <div className="mx-auto max-w-2xl px-6 py-8">
         <ReturnNav id={id} current="income" />
         <h1 className="text-3xl">Income</h1>
+        <div className="mt-4">
+          <PrepareSummary {...overview.summary} sections={overview.sections} />
+        </div>
         <form action={saveIncomeAction} className="mt-6 space-y-4">
           <input type="hidden" name="returnId" value={id} />
           <Card>
@@ -42,9 +76,12 @@ export default async function IncomePage({ params }: { params: Promise<{ id: str
             <Card className="space-y-2">
               <p className="font-medium">Salary</p>
               <Input name="employerName" placeholder="Employer" defaultValue={s?.employerName} />
+              <PrefillNote entry={prep.fields["salary.employerName"]} returnId={id} field="salary.employerName" />
               <Input name="employerTan" placeholder="TAN" defaultValue={s?.employerTan} />
               <Input name="grossSalary" type="number" placeholder="Gross salary" defaultValue={s?.grossSalary || ""} />
+              <PrefillNote entry={prep.fields["salary.grossSalary"]} returnId={id} field="salary.grossSalary" />
               <Input name="salaryTds" type="number" placeholder="TDS on salary" defaultValue={s?.tds || ""} />
+              <PrefillNote entry={prep.fields["salary.tds"]} returnId={id} field="salary.tds" />
             </Card>
           ) : null}
           {sources.some((x) => ["BUSINESS", "FREELANCING"].includes(x)) ? (
@@ -97,8 +134,10 @@ export default async function IncomePage({ params }: { params: Promise<{ id: str
           <Card className="space-y-2">
             <p className="font-medium">Other sources</p>
             <Input name="interest" type="number" placeholder="Interest income" defaultValue={interest?.amount || ""} />
+            <PrefillNote entry={prep.fields["income.interest"]} returnId={id} field="income.interest" />
             <Input name="interestSource" placeholder="Bank / source" defaultValue={interest?.source} />
-            <Input name="dividend" type="number" placeholder="Dividend" />
+            <Input name="dividend" type="number" placeholder="Dividend" defaultValue={dividend?.amount || ""} />
+            <PrefillNote entry={prep.fields["income.dividend"]} returnId={id} field="income.dividend" />
           </Card>
           {ret.itrType === "ITR-3" ? (
             <Card>
@@ -110,6 +149,14 @@ export default async function IncomePage({ params }: { params: Promise<{ id: str
           ) : null}
           <Button>Save income</Button>
         </form>
+        {Object.entries(prep.fields)
+          .filter(([, entry]) => entry.origin === "USER_EDITED")
+          .map(([field]) => (
+            <form key={field} id={`reset-${field}`} action={resetImportedFieldAction} className="hidden">
+              <input type="hidden" name="returnId" value={id} />
+              <input type="hidden" name="field" value={field} />
+            </form>
+          ))}
       </div>
     </div>
   );

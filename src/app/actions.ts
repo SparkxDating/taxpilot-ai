@@ -13,6 +13,7 @@ import { getStorage, newStorageKey } from "@/lib/providers/storage";
 import { documentSha256, persistExtraction } from "@/lib/documents/persistExtraction";
 import { isAllowedUpload, sniffMime } from "@/lib/documents/magic";
 import { applyVerifiedFactsToTaxModel } from "@/lib/documents/applyVerified";
+import { classifyEdit, parsePreparation, resetToImported } from "@/lib/documents/prefill";
 import { applyConflictResolution, rebuildDocumentConflicts } from "@/lib/documents/conflicts";
 import { DOCUMENT_TYPES } from "@/lib/documents/types";
 import { canAccessConflict, canAccessTaxFact } from "@/lib/authz";
@@ -137,6 +138,16 @@ export async function saveIncomeAction(formData: FormData) {
   const id = String(formData.get("returnId") || "");
   const ret = await prisma.taxReturn.findFirst({ where: { id, userId: session.userId } });
   if (!ret) redirect("/dashboard");
+  const existingSalary = await prisma.salaryIncome.findFirst({ where: { returnId: id } });
+  const prep = parsePreparation(ret.preparationJson);
+  const track = (path: string, raw: string) => {
+    prep.fields[path] = classifyEdit(prep.fields[path], raw);
+  };
+  track("salary.grossSalary", String(formData.get("grossSalary") || ""));
+  track("salary.tds", String(formData.get("salaryTds") || ""));
+  track("salary.employerName", String(formData.get("employerName") || ""));
+  track("income.interest", String(formData.get("interest") || ""));
+  track("income.dividend", String(formData.get("dividend") || ""));
   await prisma.salaryIncome.deleteMany({ where: { returnId: id } });
   await prisma.businessIncome.deleteMany({ where: { returnId: id } });
   await prisma.professionalIncome.deleteMany({ where: { returnId: id } });
@@ -150,6 +161,8 @@ export async function saveIncomeAction(formData: FormData) {
         employerTan: String(formData.get("employerTan") || "").toUpperCase(),
         grossSalary: n(String(formData.get("grossSalary"))),
         tds: n(String(formData.get("salaryTds"))),
+        exemptions: existingSalary?.exemptions ?? 0,
+        standardDeduction: existingSalary?.standardDeduction ?? 0,
       },
     });
   }
@@ -206,11 +219,49 @@ export async function saveIncomeAction(formData: FormData) {
     });
   }
   const regime = String(formData.get("regime") || "");
-  if (regime === "NEW" || regime === "OLD") {
-    await prisma.taxReturn.update({ where: { id }, data: { taxRegime: regime } });
-  }
+  await prisma.taxReturn.update({
+    where: { id },
+    data: {
+      ...(regime === "NEW" || regime === "OLD" ? { taxRegime: regime } : {}),
+      preparationJson: JSON.stringify(prep),
+    },
+  });
+  await audit({ userId: session.userId, returnId: id, action: "PREP_EDITED", entity: "TaxReturn", entityId: id, metadata: { fields: Object.keys(prep.fields).length } });
   await recomputeReturn(id);
   redirect(`/returns/${id}/deductions`);
+}
+
+export async function resetImportedFieldAction(formData: FormData) {
+  const session = await getSession();
+  if (!session) redirect("/login");
+  const id = String(formData.get("returnId") || "");
+  const field = String(formData.get("field") || "");
+  const ret = await prisma.taxReturn.findFirst({ where: { id, userId: session.userId } });
+  if (!ret || !canAccessReturn(ret.userId, session)) redirect("/dashboard");
+  const prep = parsePreparation(ret.preparationJson);
+  const entry = prep.fields[field];
+  if (!entry) redirect(`/returns/${id}/income`);
+  prep.fields[field] = resetToImported(entry);
+  const restored = parseAmount(entry.originalValue) ?? n(entry.originalValue);
+  if (field === "salary.grossSalary" || field === "salary.tds") {
+    const salary = await prisma.salaryIncome.findFirst({ where: { returnId: id } });
+    if (salary) {
+      await prisma.salaryIncome.update({
+        where: { id: salary.id },
+        data: field === "salary.grossSalary" ? { grossSalary: restored } : { tds: restored },
+      });
+    }
+  }
+  if (field === "income.interest" || field === "income.dividend") {
+    const kind = field === "income.interest" ? "Interest" : "Dividend";
+    await prisma.otherIncome.deleteMany({ where: { returnId: id, kind } });
+    if (restored) await prisma.otherIncome.create({ data: { returnId: id, kind, amount: restored, source: entry.source } });
+  }
+  await prisma.taxReturn.update({ where: { id }, data: { preparationJson: JSON.stringify(prep) } });
+  await audit({ userId: session.userId, returnId: id, action: "PREP_RESET_IMPORTED", entity: "TaxReturn", entityId: id, metadata: { field } });
+  await recomputeReturn(id);
+  revalidatePath(`/returns/${id}/income`);
+  redirect(`/returns/${id}/income`);
 }
 
 export async function saveDeductionsAction(formData: FormData) {

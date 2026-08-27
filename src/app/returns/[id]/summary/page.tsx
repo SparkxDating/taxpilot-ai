@@ -16,11 +16,23 @@ export default async function SummaryPage({ params, searchParams }: { params: Pr
   const { generated } = await searchParams;
   const ret = await prisma.taxReturn.findFirst({
     where: { id, userId: session.userId },
-    include: { documents: true, validationErrors: true, jsonFiles: { orderBy: { generatedAt: "desc" }, take: 1 }, user: { include: { profile: true } } },
+    include: {
+      documents: true,
+      validationErrors: true,
+      jsonFiles: { orderBy: { generatedAt: "desc" }, take: 1 },
+      user: { include: { profile: true } },
+      taxFacts: true,
+      documentConflicts: true,
+      salary: true,
+      business: true,
+      professional: true,
+      bankAccounts: true,
+    },
   });
   if (!ret) notFound();
   const calc = json<TaxComputation>(ret.calculationJson, {} as TaxComputation);
   const errors = ret.validationErrors.filter((e) => e.severity === "ERROR");
+  const openConflicts = ret.documentConflicts.filter((c) => c.status === "OPEN");
   return (
     <div>
       <SiteHeader authed name={session.name} />
@@ -61,7 +73,17 @@ export default async function SummaryPage({ params, searchParams }: { params: Pr
         <div className="mt-4 flex gap-3">
           <Badge tone={errors.length ? "err" : "ok"}>{errors.length ? `${errors.length} validation errors` : "No blocking errors"}</Badge>
           <Badge>{ret.documents.length} documents</Badge>
+          <Badge tone={openConflicts.length ? "err" : "ok"}>{openConflicts.length ? `${openConflicts.length} open conflicts` : "No open conflicts"}</Badge>
         </div>
+        <Card className="mt-4 sans text-sm space-y-1">
+          <p>Income {inr(calc.grossTotalIncome || calc.salaryIncome || 0)}</p>
+          <p>Deductions {inr(calc.deductions || 0)}</p>
+          <p>Tax {inr(calc.totalTax || 0)}</p>
+          <p>TDS {inr(calc.tds || 0)}</p>
+          <p>{(calc.refundOrPayable || 0) >= 0 ? "Refund" : "Payable"} {inr(Math.abs(calc.refundOrPayable || 0))}</p>
+          <p>Open conflicts {openConflicts.length}</p>
+          <p>Missing required information {errors.length ? "Yes" : "No blocking errors"}</p>
+        </Card>
         {errors.length || ret.itrType !== "ITR-4" ? (
           <p className="sans mt-6 text-sm text-red-800">
             {ret.itrType !== "ITR-4"

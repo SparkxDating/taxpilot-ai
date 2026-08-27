@@ -8,6 +8,9 @@ import { ValidationIssue } from "@/components/validation-issue";
 import { json, inr, maskAccount, maskPan } from "@/lib/utils";
 import type { TaxComputation } from "@/lib/tax/engine";
 import Link from "next/link";
+import { overviewFromRecords, parsePreparation } from "@/lib/documents/prefill";
+import { PrepareSummary } from "@/components/prepare-summary";
+import { reconcileTds } from "@/lib/documents/tdsReconcile";
 
 export default async function ReviewPage({ params }: { params: Promise<{ id: string }> }) {
   const session = await getSession();
@@ -28,10 +31,32 @@ export default async function ReviewPage({ params }: { params: Promise<{ id: str
       taxPayments: true,
       bankAccounts: true,
       validationErrors: true,
+      documents: true,
+      taxFacts: true,
+      documentConflicts: true,
     },
   });
   if (!ret) notFound();
   const calc = json<TaxComputation>(ret.calculationJson, {} as TaxComputation);
+  const prep = parsePreparation(ret.preparationJson);
+  const sources = json<string[]>(ret.incomeSourcesJson, []);
+  const overview = overviewFromRecords(id, {
+    documents: ret.documents,
+    facts: ret.taxFacts,
+    openConflicts: ret.documentConflicts.filter((c) => c.status === "OPEN"),
+    prep,
+    hasPan: Boolean(ret.user.profile?.pan),
+    salarySources: sources.some((x) => x.includes("SALARY")),
+    hasSalary: Boolean(ret.salary[0]?.grossSalary),
+    businessSources: sources.some((x) => ["BUSINESS", "FREELANCING", "PROFESSION"].includes(x)),
+    hasBusiness: Boolean(ret.business[0]?.turnover || ret.professional[0]?.grossReceipts),
+    hasBank: ret.bankAccounts.length > 0,
+    validationErrors: ret.validationErrors.filter((e) => e.severity === "ERROR").length,
+  });
+  const form16Tds = ret.taxFacts.find((f) => f.normalizedTaxField === "salary.tds" && f.status === "VERIFIED")?.numericValue ?? null;
+  const aisTds = ret.taxFacts.find((f) => f.normalizedTaxField === "tds.ais" && f.status === "VERIFIED")?.numericValue ?? null;
+  const tdsStatus = form16Tds != null || aisTds != null ? reconcileTds(form16Tds, aisTds) : null;
+  const openConflicts = ret.documentConflicts.filter((c) => c.status === "OPEN");
   const err = (section: string) => ret.validationErrors.filter((e) => e.section === section);
   const mark = (section: string) => {
     const rows = err(section);
@@ -59,6 +84,32 @@ export default async function ReviewPage({ params }: { params: Promise<{ id: str
       <div className="mx-auto max-w-3xl px-6 py-8">
         <ReturnNav id={id} current="review" />
         <h1 className="text-3xl">Return review</h1>
+        <div className="mt-4">
+          <PrepareSummary {...overview.summary} sections={overview.sections} />
+        </div>
+        {openConflicts.length ? (
+          <Card className="mt-4">
+            <p className="font-medium">Open conflicts</p>
+            <p className="sans text-sm text-[#5c6773]">{openConflicts.length} unresolved. JSON generation stays blocked until resolved.</p>
+          </Card>
+        ) : null}
+        {tdsStatus && tdsStatus !== "MATCHED" ? (
+          <Card className="mt-4">
+            <p className="font-medium">TDS reconciliation: {tdsStatus}</p>
+            <p className="sans text-sm">Form 16 TDS {form16Tds ?? "—"} · AIS TDS {aisTds ?? "—"} · Salary TDS {ret.salary[0]?.tds ?? "—"}</p>
+          </Card>
+        ) : null}
+        {Object.keys(prep.fields).length ? (
+          <Card className="mt-4 space-y-2">
+            <p className="font-medium">Imported values</p>
+            {Object.entries(prep.fields).map(([field, entry]) => (
+              <p key={field} className="sans text-sm">
+                {field} · {entry.currentValue} · {entry.source.replaceAll("_", " ")}
+                {entry.sourcePage ? ` · Page ${entry.sourcePage}` : ""} · {entry.origin}
+              </p>
+            ))}
+          </Card>
+        ) : null}
         <p className="sans mt-2 text-sm text-[#5c6773]">
           Selected regime: {ret.taxRegime === "OLD" ? "Old regime" : "New regime"} · Taxable income {inr(calc.taxableIncome || 0)} · Eligible
           deductions {inr(calc.deductions || 0)} · Final tax {inr(calc.totalTax || 0)}

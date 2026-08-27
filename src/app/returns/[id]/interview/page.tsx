@@ -10,6 +10,8 @@ import { getAIProvider } from "@/lib/providers/ai";
 import { json } from "@/lib/utils";
 import type { EligibilityResult } from "@/lib/tax-rules/ay2026_27/eligibility";
 import Link from "next/link";
+import { overviewFromRecords, parsePreparation } from "@/lib/documents/prefill";
+import { PrepareSummary } from "@/components/prepare-summary";
 
 export default async function Interview({ params }: { params: Promise<{ id: string }> }) {
   const session = await getSession();
@@ -17,9 +19,34 @@ export default async function Interview({ params }: { params: Promise<{ id: stri
   const { id } = await params;
   const ret = await prisma.taxReturn.findFirst({
     where: { id, userId: session.userId },
-    include: { questions: { orderBy: { sortOrder: "asc" }, include: { answers: true } } },
+    include: {
+      questions: { orderBy: { sortOrder: "asc" }, include: { answers: true } },
+      documents: true,
+      taxFacts: true,
+      documentConflicts: true,
+      salary: true,
+      business: true,
+      professional: true,
+      bankAccounts: true,
+      validationErrors: true,
+      user: { include: { profile: true } },
+    },
   });
   if (!ret) notFound();
+  const sources = json<string[]>(ret.incomeSourcesJson, []);
+  const overview = overviewFromRecords(id, {
+    documents: ret.documents,
+    facts: ret.taxFacts,
+    openConflicts: ret.documentConflicts.filter((c) => c.status === "OPEN"),
+    prep: parsePreparation(ret.preparationJson),
+    hasPan: Boolean(ret.user.profile?.pan),
+    salarySources: sources.some((x) => x.includes("SALARY")),
+    hasSalary: Boolean(ret.salary[0]?.grossSalary),
+    businessSources: sources.some((x) => ["BUSINESS", "FREELANCING", "PROFESSION"].includes(x)),
+    hasBusiness: Boolean(ret.business[0]?.turnover || ret.professional[0]?.grossReceipts),
+    hasBank: ret.bankAccounts.length > 0,
+    validationErrors: ret.validationErrors.filter((e) => e.severity === "ERROR").length,
+  });
   const eligibility = json<EligibilityResult>(ret.eligibilityJson, { recommended: "ITR-4", itr4Eligible: true, reasons: [], warnings: [] });
   const pending = ret.questions.find((q) => q.status === "PENDING");
   const explainer = pending ? await getAIProvider().explain(pending.helpText || pending.prompt) : "";
@@ -32,6 +59,9 @@ export default async function Interview({ params }: { params: Promise<{ id: stri
         <p className="sans mt-2 text-sm text-[#5c6773]">
           Recommended form: <strong>{ret.itrType}</strong>. This decision is from published eligibility rules, not the assistant.
         </p>
+        <div className="mt-4">
+          <PrepareSummary {...overview.summary} sections={overview.sections} />
+        </div>
         {ret.itrType === "ITR-3" ? (
           <Card className="mt-4">
             <p className="font-medium">ITR-3 preparation is currently in development. Filing JSON generation is not available yet.</p>
