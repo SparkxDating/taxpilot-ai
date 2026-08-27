@@ -4,6 +4,8 @@ import { OFFICIAL_SCHEMA_VER } from "@/lib/itr-json/ay2026_27/itr4/mapper";
 import { evaluateFilingGate } from "@/lib/validation/filingGate";
 import type { TaxComputation } from "@/lib/tax/engine";
 import { TaxEngine } from "@/lib/tax/engine";
+import { loadNormalized } from "@/lib/tax/load";
+import { openConflictCount } from "@/lib/documents/conflicts";
 
 export const SCHEMA_VERSION = OFFICIAL_SCHEMA_VER;
 
@@ -20,10 +22,21 @@ export type GeneratedItr = {
   layers: ReturnType<typeof evaluateFilingGate>["layers"];
 };
 
-export function generateITRJson(data: NormalizedReturn, opts?: { generatedAt?: Date; returnId?: string }): GeneratedItr {
+export function generateITRJson(
+  data: NormalizedReturn,
+  opts?: { generatedAt?: Date; returnId?: string; openDocumentConflicts?: number },
+): GeneratedItr {
   const calc = TaxEngine.calculate(data);
-  const gate = evaluateFilingGate(data, opts?.returnId, opts?.generatedAt);
+  const openDocumentConflicts = opts?.openDocumentConflicts ?? 0;
+  const gate = evaluateFilingGate(data, opts?.returnId, opts?.generatedAt, openDocumentConflicts);
   const errors: GeneratedItr["errors"] = [];
+  if (openDocumentConflicts > 0) {
+    errors.push({
+      severity: "ERROR",
+      message: "Unresolved document conflicts must be resolved before JSON generation.",
+      field: "DOCUMENT_CONFLICT_OPEN",
+    });
+  }
   if (!gate.integrity.ok) {
     errors.push({
       severity: "ERROR",
@@ -62,4 +75,29 @@ export function generateITRJson(data: NormalizedReturn, opts?: { generatedAt?: D
 export function mapToOfficialJson(data: NormalizedReturn) {
   const gate = evaluateFilingGate(data, undefined, undefined);
   return { json: gate.json, calc: gate.calc };
+}
+
+export type JsonGenerationGate = {
+  allowed: boolean;
+  data: NormalizedReturn | null;
+  result: GeneratedItr | null;
+  error: "empty" | "itr3" | "blocked" | null;
+};
+
+/** Authoritative server-side decision for whether ITR JSON may be generated. */
+export async function canGenerateItrJson(
+  returnId: string,
+  opts?: { generatedAt?: Date; ownerUserId?: string },
+): Promise<JsonGenerationGate> {
+  const data = await loadNormalized(returnId, opts?.ownerUserId);
+  if (!data) return { allowed: false, data: null, result: null, error: "empty" };
+  if (data.itrType !== "ITR-4") return { allowed: false, data, result: null, error: "itr3" };
+  const openDocumentConflicts = await openConflictCount(returnId);
+  const result = generateITRJson(data, {
+    returnId,
+    generatedAt: opts?.generatedAt,
+    openDocumentConflicts,
+  });
+  if (!result.valid || !result.json) return { allowed: false, data, result, error: "blocked" };
+  return { allowed: true, data, result, error: null };
 }

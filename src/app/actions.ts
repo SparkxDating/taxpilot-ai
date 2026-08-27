@@ -8,13 +8,12 @@ import { rateLimit } from "@/lib/rate-limit";
 import { audit } from "@/lib/audit";
 import { seedInterview } from "@/lib/interview";
 import { recomputeReturn } from "@/lib/tax/persist";
-import { loadNormalized } from "@/lib/tax/load";
-import { generateITRJson } from "@/lib/itr-json/mapper";
+import { canGenerateItrJson } from "@/lib/itr-json/mapper";
 import { getStorage, newStorageKey } from "@/lib/providers/storage";
 import { documentSha256, persistExtraction } from "@/lib/documents/persistExtraction";
 import { isAllowedUpload, sniffMime } from "@/lib/documents/magic";
 import { applyVerifiedFactsToTaxModel } from "@/lib/documents/applyVerified";
-import { applyConflictResolution, rebuildDocumentConflicts, openConflictCount } from "@/lib/documents/conflicts";
+import { applyConflictResolution, rebuildDocumentConflicts } from "@/lib/documents/conflicts";
 import { DOCUMENT_TYPES } from "@/lib/documents/types";
 import { canAccessConflict, canAccessTaxFact } from "@/lib/authz";
 import { parseAmount } from "@/lib/documents/rupees";
@@ -311,18 +310,18 @@ export async function generateJsonAction(formData: FormData) {
   const id = String(formData.get("returnId") || "");
   const ret = await prisma.taxReturn.findFirst({ where: { id, userId: session.userId } });
   if (!ret || !canAccessReturn(ret.userId, session)) redirect("/dashboard");
-  const data = await loadNormalized(id, session.role === "ADMIN" ? undefined : session.userId);
-  if (!data) redirect("/dashboard");
-  if (data.itrType !== "ITR-4") redirect(`/returns/${id}/summary?error=itr3`);
-  if ((await openConflictCount(id)) > 0) {
+  const gate = await canGenerateItrJson(id, {
+    generatedAt: new Date(),
+    ownerUserId: session.role === "ADMIN" ? undefined : session.userId,
+  });
+  if (gate.error === "empty" || !gate.data) redirect("/dashboard");
+  if (gate.error === "itr3") redirect(`/returns/${id}/summary?error=itr3`);
+  if (!gate.allowed || !gate.result?.json) {
     await prisma.taxReturn.update({ where: { id }, data: { status: "VALIDATION_FAILED" } });
     redirect(`/returns/${id}/validate?blocked=1`);
   }
-  const result = generateITRJson(data, { returnId: id, generatedAt: new Date() });
-  if (!result.valid || !result.json) {
-    await prisma.taxReturn.update({ where: { id }, data: { status: "VALIDATION_FAILED" } });
-    redirect(`/returns/${id}/validate?blocked=1`);
-  }
+  const data = gate.data;
+  const result = gate.result;
   const payload = JSON.stringify(result.json, null, 2);
   const dir = path.join(process.cwd(), "storage", "json", id);
   await mkdir(dir, { recursive: true });

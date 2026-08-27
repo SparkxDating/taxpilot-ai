@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { authed, loadOwnedReturn } from "../../../_util";
-import { loadNormalized } from "@/lib/tax/load";
-import { generateITRJson } from "@/lib/itr-json/mapper";
+import { canGenerateItrJson } from "@/lib/itr-json/mapper";
 import { prisma } from "@/lib/db";
 import { mkdir, writeFile } from "fs/promises";
 import path from "path";
@@ -13,15 +12,16 @@ export async function POST(_: Request, { params }: { params: Promise<{ id: strin
   const { id } = await params;
   const found = await loadOwnedReturn(id, session.userId, session.role);
   if (!found.ret) return found.error;
-  const data = await loadNormalized(id, session.role === "ADMIN" ? undefined : session.userId);
-  if (!data) return NextResponse.json({ error: "empty" }, { status: 400 });
-  if (data.itrType !== "ITR-4") {
+  const gate = await canGenerateItrJson(id, { ownerUserId: session.role === "ADMIN" ? undefined : session.userId });
+  if (gate.error === "empty") return NextResponse.json({ error: "Unable to generate the return." }, { status: 400 });
+  if (gate.error === "itr3") {
     return NextResponse.json({ error: "ITR-3 filing JSON is not available yet." }, { status: 400 });
   }
-  const result = generateITRJson(data, { returnId: id });
-  if (!result.valid || !result.json) {
-    return NextResponse.json({ error: "Unable to generate the return. Please correct the highlighted issues.", errors: result.errors }, { status: 400 });
+  if (!gate.allowed || !gate.result?.json || !gate.data) {
+    return NextResponse.json({ error: "Unable to generate the return. Please correct the highlighted issues." }, { status: 400 });
   }
+  const data = gate.data;
+  const result = gate.result;
   const dir = path.join(process.cwd(), "storage", "json", id);
   await mkdir(dir, { recursive: true });
   const file = path.join(dir, `ITR-4.json`);

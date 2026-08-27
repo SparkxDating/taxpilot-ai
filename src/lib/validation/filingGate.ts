@@ -11,7 +11,12 @@ import { auditITR4Mapping } from "@/lib/itr-json/ay2026_27/itr4/auditMapping";
 
 export type LayerResult = "PASS" | "FAIL";
 
-export function evaluateFilingGate(data: NormalizedReturn, returnId?: string, generatedAt?: Date) {
+export function evaluateFilingGate(
+  data: NormalizedReturn,
+  returnId?: string,
+  generatedAt?: Date,
+  openDocumentConflicts = 0,
+) {
   const integrity = verifySchemaIntegrity();
   const completeness = completenessValidate(data, returnId);
   const unsupported = detectUnsupported(data, returnId);
@@ -87,7 +92,7 @@ export function evaluateFilingGate(data: NormalizedReturn, returnId?: string, ge
     mapping: (mapping.status === "PASS" ? "PASS" : "FAIL") as LayerResult,
   };
 
-  const ready =
+  const layersReady =
     layers.schemaIntegrity === "PASS" &&
     layers.dataCompleteness === "PASS" &&
     layers.eligibility === "PASS" &&
@@ -96,6 +101,20 @@ export function evaluateFilingGate(data: NormalizedReturn, returnId?: string, ge
     layers.unsupported === "PASS" &&
     layers.schema === "PASS" &&
     layers.mapping === "PASS";
-
-  return { ready, layers, integrity, completeness, unsupported, eligibility, business, calc, official, json, mapping };
+  const conflictBlock = openDocumentConflicts > 0;
+  const ready = layersReady && !conflictBlock;
+  return {
+    ready,
+    layers,
+    integrity,
+    completeness,
+    unsupported,
+    eligibility,
+    business,
+    calc,
+    official,
+    json: conflictBlock ? null : json,
+    mapping,
+    openDocumentConflicts,
+  };
 }
