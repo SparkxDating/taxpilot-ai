@@ -23,6 +23,7 @@ export async function POST(_: Request, { params }: { params: Promise<{ id: strin
     fileName: doc.fileName,
     mimeType: doc.mimeType,
     declaredKind: doc.kind,
+    force: true,
   });
   return NextResponse.json({ kind: result.kind, fields: result.fields.length, errorCode: result.errorCode || null });
 }

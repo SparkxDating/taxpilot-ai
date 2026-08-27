@@ -26,6 +26,8 @@ export function confidenceLevel(n: number): "HIGH" | "MEDIUM" | "LOW" {
 
 export type PdfPage = { pageNumber: number; text: string };
 
+export type ExtractionMethod = "DETERMINISTIC" | "OCR" | "AI" | "local" | "csv" | "xlsx" | "filename" | "placeholder";
+
 export type ExtractedField = {
   field: string;
   normalizedTaxField: string;
@@ -35,9 +37,21 @@ export type ExtractedField = {
   confidence: number;
   sourcePage: number | null;
   sourceText: string;
-  extractionMethod: "local" | "csv" | "xlsx" | "filename" | "placeholder";
+  extractionMethod: ExtractionMethod;
   originalCategory?: string;
   warning?: string;
+};
+
+export type AisTransaction = {
+  date: string;
+  description: string;
+  amount: number | null;
+  reportedValue: number | null;
+  source: string;
+  category: string;
+  originalCategory: string;
+  sourcePage: number | null;
+  sourceText: string;
 };
 
 export type BankRow = {
@@ -58,7 +72,22 @@ export type ExtractionResult = {
   pages: PdfPage[];
   fields: ExtractedField[];
   transactions: BankRow[];
+  aisTransactions: AisTransaction[];
   warnings: string[];
   errorCode?: string;
   errorMessage?: string;
+  cached?: boolean;
+  usedAi?: boolean;
+  usedOcr?: boolean;
+  promptVersion?: string;
+  extractorVersion?: string;
 };
+
+export const EXTRACTION_BUNDLE_VERSION = "form16-v1+ais-v1";
+export const PROMPT_VERSION = { FORM_16: "form16-v1", AIS: "ais-v1" } as const;
+
+export function displayExtractionMethod(method: string) {
+  if (method === "AI") return "AI";
+  if (method === "OCR") return "OCR";
+  return "DETERMINISTIC";
+}

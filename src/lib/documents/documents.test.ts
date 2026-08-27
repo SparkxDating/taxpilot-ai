@@ -314,7 +314,7 @@ describe("authz documents", () => {
 describe("architectural safety", () => {
   it("document modules never import ITR JSON generation", () => {
     const dir = join(process.cwd(), "src/lib/documents");
-    const files = ["pipeline.ts", "applyVerified.ts", "persistExtraction.ts", "extractors/form16.ts", "conflicts.ts"];
+    const files = ["pipeline.ts", "applyVerified.ts", "persistExtraction.ts", "extractors/form16.ts", "conflicts.ts", "fallback.ts"];
     for (const f of files) {
       const src = readFileSync(join(dir, f), "utf8");
       expect(src).not.toContain("generateITRJson");

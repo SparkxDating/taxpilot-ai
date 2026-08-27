@@ -4,8 +4,8 @@ import { notFound, redirect } from "next/navigation";
 import { SiteHeader } from "@/components/site-header";
 import { ReturnNav } from "@/components/return-nav";
 import { Badge, Button, Card, Input } from "@/components/ui";
-import { classifyBankTxAction, reviewExtractionAction } from "@/app/actions";
-import { confidenceLevel } from "@/lib/documents/types";
+import { classifyBankTxAction, reprocessDocumentAction, reviewExtractionAction } from "@/app/actions";
+import { confidenceLevel, displayExtractionMethod } from "@/lib/documents/types";
 import Link from "next/link";
 
 export default async function DocumentDetailPage({
@@ -47,23 +47,31 @@ export default async function DocumentDetailPage({
           </Card>
         ) : null}
         {doc.errorMessage ? <p className="sans mt-2 text-sm text-amber-800">{doc.errorMessage}</p> : null}
+        <form action={reprocessDocumentAction} className="mt-4">
+          <input type="hidden" name="documentId" value={doc.id} />
+          <Button type="submit" variant="outline">
+            Reprocess
+          </Button>
+        </form>
         <div className="mt-6 space-y-3">
           {doc.extractions.map((e) => {
             const fact = doc.taxFacts.find((f) => f.field === e.fieldKey);
+            const level = confidenceLevel(e.confidence);
+            const low = level === "LOW";
             return (
               <Card key={e.id} className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <p className="font-medium">{e.fieldKey}</p>
-                  <Badge tone={fact?.status === "CONFLICT" ? "err" : e.confidence >= 0.9 ? "ok" : "warn"}>
-                    {confidenceLevel(e.confidence)} {(e.confidence * 100).toFixed(0)}%
+                  <p className="font-medium">{e.fieldKey.startsWith("txn.") ? `AIS transaction ${e.fieldKey.slice(4)}` : e.fieldKey}</p>
+                  <Badge tone={fact?.status === "CONFLICT" ? "err" : low ? "err" : e.confidence >= 0.9 ? "ok" : "warn"}>
+                    {level} {(e.confidence * 100).toFixed(0)}%
                   </Badge>
                 </div>
+                {low ? <p className="text-sm text-amber-800">LOW CONFIDENCE — review before verifying.</p> : null}
                 <p>Value: {e.extractedValue}</p>
-                {e.originalValue && e.originalValue !== e.extractedValue ? (
-                  <p className="sans text-xs">Original: {e.originalValue}</p>
-                ) : null}
+                {e.originalValue ? <p className="sans text-xs">Original extracted value: {e.originalValue}</p> : null}
+                {e.editedValue ? <p className="sans text-xs">User-edited value: {e.editedValue}</p> : null}
                 <p className="sans text-xs text-[#5c6773]">
-                  Source page {e.pageRef || "—"} · {e.extractionMethod}
+                  Source page {e.pageRef || "—"} · Extraction method {displayExtractionMethod(e.extractionMethod)}
                 </p>
                 <p className="sans text-xs text-[#5c6773]">Source text: {e.sourceText || "—"}</p>
                 {fact?.normalizedTaxField ? (

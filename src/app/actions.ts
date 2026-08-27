@@ -565,3 +565,24 @@ export async function classifyBankTxAction(formData: FormData) {
   });
   revalidatePath(`/returns/${row.returnId}/documents/${row.documentId}`);
 }
+
+export async function reprocessDocumentAction(formData: FormData) {
+  const session = await getSession();
+  if (!session) redirect("/login");
+  const docId = String(formData.get("documentId") || "");
+  const doc = await prisma.document.findUnique({ where: { id: docId } });
+  if (!doc || !canAccessTaxFact(doc.userId, session) || !doc.returnId) redirect("/dashboard");
+  const bytes = await getStorage().get(doc.storageKey);
+  await persistExtraction({
+    documentId: doc.id,
+    returnId: doc.returnId,
+    userId: session.userId,
+    bytes,
+    fileName: doc.fileName,
+    mimeType: doc.mimeType,
+    declaredKind: doc.kind,
+    force: true,
+  });
+  revalidatePath(`/returns/${doc.returnId}/documents`);
+  revalidatePath(`/returns/${doc.returnId}/documents/${doc.id}`);
+}

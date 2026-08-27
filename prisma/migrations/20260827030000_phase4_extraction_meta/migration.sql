@@ -1,0 +1,5 @@
+ALTER TABLE "Document" ADD COLUMN "extractorVersion" TEXT NOT NULL DEFAULT '';
+ALTER TABLE "Document" ADD COLUMN "extractionConfig" TEXT NOT NULL DEFAULT '';
+ALTER TABLE "Document" ADD COLUMN "promptVersion" TEXT NOT NULL DEFAULT '';
+ALTER TABLE "Document" ADD COLUMN "aiProvider" TEXT NOT NULL DEFAULT '';
+ALTER TABLE "Document" ADD COLUMN "aiModel" TEXT NOT NULL DEFAULT '';

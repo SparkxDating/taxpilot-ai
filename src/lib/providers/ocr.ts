@@ -1,3 +1,5 @@
+import type { PdfPage } from "@/lib/documents/types";
+
 export type ExtractionCandidate = {
   fieldKey: string;
   extractedValue: string;
@@ -6,9 +8,12 @@ export type ExtractionCandidate = {
   pageRef?: string;
 };
 
+export type OcrTextResult = { pages: PdfPage[]; error?: string };
+
 export interface DocumentExtractionProvider {
   name: string;
   configured: boolean;
+  extractText(input: { fileName: string; mimeType: string; bytes: Buffer }): Promise<OcrTextResult>;
   extract(input: { fileName: string; mimeType: string; bytes: Buffer }): Promise<ExtractionCandidate[]>;
 }
 
@@ -16,12 +21,17 @@ export interface DocumentExtractionProvider {
 export class UnconfiguredOcrProvider implements DocumentExtractionProvider {
   name = "unconfigured";
   configured = false;
+  async extractText(): Promise<OcrTextResult> {
+    return { pages: [], error: "OCR_PROVIDER is not configured" };
+  }
   async extract(): Promise<ExtractionCandidate[]> {
     return [];
   }
 }
 
 export function getOcrProvider(): DocumentExtractionProvider {
+  const name = (process.env.OCR_PROVIDER || "").trim().toLowerCase();
+  if (!name || name === "off" || name === "none") return new UnconfiguredOcrProvider();
   return new UnconfiguredOcrProvider();
 }
 

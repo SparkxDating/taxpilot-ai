@@ -136,9 +136,14 @@ model Document {
   sha256        String   @default("")
   status        String   @default("UPLOADED")
   processedAt   DateTime?
-  errorCode     String   @default("")
-  errorMessage  String   @default("")
-  createdAt     DateTime @default(now())
+  errorCode          String   @default("")
+  errorMessage       String   @default("")
+  extractorVersion   String   @default("")
+  extractionConfig   String   @default("")
+  promptVersion      String   @default("")
+  aiProvider         String   @default("")
+  aiModel            String   @default("")
+  createdAt          DateTime @default(now())
   deletedAt     DateTime?
   user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   taxReturn     TaxReturn? @relation(fields: [returnId], references: [id], onDelete: SetNull)
