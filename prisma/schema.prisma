@@ -105,6 +105,8 @@ model TaxReturn {
   auditLogs        AuditLog[]
   profitLoss       ProfitLoss?
   balanceSheet     BalanceSheet?
+  taxFacts         TaxFact[]
+  bankTransactions BankTransaction[]
 
   @@index([userId, assessmentYear])
   @@index([status])
@@ -122,39 +124,93 @@ model ReturnVersion {
 }
 
 model Document {
-  id           String   @id @default(cuid())
-  userId       String
-  returnId     String?
-  kind         String
-  fileName     String
-  mimeType     String
-  sizeBytes    Int
-  storageKey   String
-  status       String   @default("UPLOADED")
-  createdAt    DateTime @default(now())
-  deletedAt    DateTime?
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  taxReturn    TaxReturn? @relation(fields: [returnId], references: [id], onDelete: SetNull)
-  extractions  DocumentExtraction[]
+  id            String   @id @default(cuid())
+  userId        String
+  returnId      String?
+  kind          String
+  fileName      String
+  mimeType      String
+  sizeBytes     Int
+  storageKey    String
+  sha256        String   @default("")
+  status        String   @default("UPLOADED")
+  processedAt   DateTime?
+  errorCode     String   @default("")
+  errorMessage  String   @default("")
+  createdAt     DateTime @default(now())
+  deletedAt     DateTime?
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  taxReturn     TaxReturn? @relation(fields: [returnId], references: [id], onDelete: SetNull)
+  extractions   DocumentExtraction[]
+  taxFacts      TaxFact[]
+  bankTx        BankTransaction[]
   @@index([userId, returnId])
+  @@index([userId, sha256])
   @@index([status])
 }
 
 model DocumentExtraction {
-  id             String    @id @default(cuid())
-  documentId     String
-  fieldKey       String
-  extractedValue String
-  numericValue   Int?
-  confidence     Float
-  pageRef        String    @default("")
-  sourceLocation String    @default("")
-  status         String    @default("NEEDS_REVIEW")
-  confirmed      Boolean   @default(false)
-  confirmedAt    DateTime?
-  extractedAt    DateTime  @default(now())
-  document       Document  @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  id                String    @id @default(cuid())
+  documentId        String
+  fieldKey          String
+  extractedValue    String
+  originalValue     String    @default("")
+  editedValue       String    @default("")
+  editedBy          String    @default("")
+  editedAt          DateTime?
+  numericValue      Int?
+  confidence        Float
+  pageRef           String    @default("")
+  sourceLocation    String    @default("")
+  sourceText        String    @default("")
+  extractionMethod  String    @default("local")
+  status            String    @default("NEEDS_REVIEW")
+  confirmed         Boolean   @default(false)
+  confirmedAt       DateTime?
+  extractedAt       DateTime  @default(now())
+  document          Document  @relation(fields: [documentId], references: [id], onDelete: Cascade)
   @@index([documentId, fieldKey])
+}
+
+model TaxFact {
+  id                String    @id @default(cuid())
+  returnId          String
+  sourceDocumentId  String
+  field             String
+  value             String
+  numericValue      Int?
+  confidence        Float
+  sourcePage        String    @default("")
+  sourceText        String    @default("")
+  originalValue     String    @default("")
+  editedValue       String    @default("")
+  verified          Boolean   @default(false)
+  verifiedBy        String    @default("")
+  verifiedAt        DateTime?
+  status            String    @default("PENDING")
+  conflictWithId    String    @default("")
+  createdAt         DateTime  @default(now())
+  taxReturn         TaxReturn @relation(fields: [returnId], references: [id], onDelete: Cascade)
+  document          Document  @relation(fields: [sourceDocumentId], references: [id], onDelete: Cascade)
+  @@index([returnId, field])
+}
+
+model BankTransaction {
+  id          String   @id @default(cuid())
+  documentId  String
+  returnId    String
+  date        String   @default("")
+  description String   @default("")
+  debit       Int      @default(0)
+  credit      Int      @default(0)
+  balance     Int      @default(0)
+  reference   String   @default("")
+  sourcePage  String   @default("")
+  category    String   @default("UNKNOWN")
+  verified    Boolean  @default(false)
+  document    Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  taxReturn   TaxReturn @relation(fields: [returnId], references: [id], onDelete: Cascade)
+  @@index([returnId])
 }
 
 model IncomeSource {

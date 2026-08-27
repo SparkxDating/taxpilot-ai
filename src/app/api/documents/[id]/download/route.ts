@@ -1,0 +1,22 @@
+import { NextResponse } from "next/server";
+import { authed } from "../../../_util";
+import { prisma } from "@/lib/db";
+import { getStorage } from "@/lib/providers/storage";
+import { canAccessDocument } from "@/lib/authz";
+
+export async function GET(_: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { session, error } = await authed();
+  if (!session) return error;
+  const { id } = await params;
+  const doc = await prisma.document.findUnique({ where: { id } });
+  if (!doc || doc.deletedAt) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  if (!canAccessDocument(doc.userId, session)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const bytes = await getStorage().get(doc.storageKey);
+  return new NextResponse(new Uint8Array(bytes), {
+    headers: {
+      "Content-Type": doc.mimeType,
+      "Content-Disposition": `attachment; filename="${doc.fileName.replace(/"/g, "")}"`,
+      "Cache-Control": "private, no-store",
+    },
+  });
+}

@@ -11,18 +11,13 @@ import { recomputeReturn } from "@/lib/tax/persist";
 import { loadNormalized } from "@/lib/tax/load";
 import { generateITRJson } from "@/lib/itr-json/mapper";
 import { getStorage, newStorageKey } from "@/lib/providers/storage";
-import { getOcrProvider, MIN_AUTO_INSERT_CONFIDENCE } from "@/lib/providers/ocr";
+import { documentSha256, persistExtraction } from "@/lib/documents/persistExtraction";
+import { isAllowedUpload, sniffMime } from "@/lib/documents/magic";
+import { applyVerifiedFactsToTaxModel } from "@/lib/documents/applyVerified";
+import { DOCUMENT_TYPES } from "@/lib/documents/types";
 import { mkdir, writeFile } from "fs/promises";
 import path from "path";
-import { createHash } from "crypto";
 
-function f(data: FormData) {
-  const o: Record<string, string> = {};
-  data.forEach((v, k) => {
-    if (typeof v === "string") o[k] = v;
-  });
-  return o;
-}
 function n(v: string | undefined) {
   const x = Number(v);
   return Number.isFinite(x) ? Math.round(x) : 0;
@@ -354,45 +349,44 @@ export async function uploadDocumentAction(formData: FormData) {
   if (!ret) redirect("/dashboard");
   const file = formData.get("file");
   if (!(file instanceof File) || !file.size) redirect(`/returns/${id}/documents?error=file`);
-  const allowed = ["application/pdf", "image/jpeg", "image/png", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "text/csv"];
-  if (!allowed.includes(file.type)) redirect(`/returns/${id}/documents?error=type`);
-  if (file.size > 12 * 1024 * 1024) redirect(`/returns/${id}/documents?error=size`);
   const bytes = Buffer.from(await file.arrayBuffer());
+  const mime = sniffMime(bytes, file.name, file.type);
+  const gate = isAllowedUpload(mime, file.size);
+  if (!gate.ok) redirect(`/returns/${id}/documents?error=${gate.code.toLowerCase()}`);
+  const hash = documentSha256(bytes);
+  const dup = await prisma.document.findFirst({
+    where: { userId: session.userId, returnId: id, sha256: hash, deletedAt: null },
+  });
+  if (dup) redirect(`/returns/${id}/documents/${dup.id}?duplicate=1`);
   const key = newStorageKey(session.userId, file.name);
-  await getStorage().put(key, bytes, file.type);
+  await getStorage().put(key, bytes, mime);
+  const declared = String(formData.get("kind") || "OTHER");
+  const kind = (DOCUMENT_TYPES as readonly string[]).includes(declared) ? declared : "OTHER";
   const doc = await prisma.document.create({
     data: {
       userId: session.userId,
       returnId: id,
-      kind: String(formData.get("kind") || "OTHER"),
+      kind,
       fileName: file.name,
-      mimeType: file.type,
+      mimeType: mime,
       sizeBytes: file.size,
       storageKey: key,
+      sha256: hash,
       status: "PROCESSING",
     },
   });
-  const ocr = getOcrProvider();
-  const candidates = await ocr.extract({ fileName: file.name, mimeType: file.type, bytes });
-  if (!ocr.configured) {
-    await prisma.document.update({ where: { id: doc.id }, data: { status: "UPLOADED" } });
-  } else {
-    for (const c of candidates) {
-      await prisma.documentExtraction.create({
-        data: {
-          documentId: doc.id,
-          fieldKey: c.fieldKey,
-          extractedValue: c.extractedValue,
-          numericValue: c.numericValue,
-          confidence: c.confidence,
-          pageRef: c.pageRef || "",
-          status: c.confidence >= MIN_AUTO_INSERT_CONFIDENCE ? "EXTRACTED" : "NEEDS_REVIEW",
-        },
-      });
-    }
-    await prisma.document.update({ where: { id: doc.id }, data: { status: candidates.length ? "NEEDS_REVIEW" : "EXTRACTED" } });
-  }
+  await audit({ userId: session.userId, returnId: id, action: "UPLOAD", entity: "Document", entityId: doc.id, metadata: { kind, size: file.size } });
+  await persistExtraction({
+    documentId: doc.id,
+    returnId: id,
+    userId: session.userId,
+    bytes,
+    fileName: file.name,
+    mimeType: mime,
+    declaredKind: kind,
+  });
   revalidatePath(`/returns/${id}/documents`);
+  redirect(`/returns/${id}/documents/${doc.id}`);
 }
 
 export async function reviewExtractionAction(formData: FormData) {
@@ -402,18 +396,81 @@ export async function reviewExtractionAction(formData: FormData) {
   const decision = String(formData.get("decision") || "");
   const row = await prisma.documentExtraction.findUnique({ where: { id: extractionId }, include: { document: true } });
   if (!row || row.document.userId !== session.userId) return;
-  if (row.confidence < MIN_AUTO_INSERT_CONFIDENCE && decision === "confirm" && !String(formData.get("edited"))) {
-    /* still allow explicit confirm */
-  }
+  const edited = String(formData.get("edited") || "").trim();
+  const nextValue = edited || row.extractedValue;
   await prisma.documentExtraction.update({
     where: { id: extractionId },
     data: {
-      status: decision === "reject" ? "FAILED" : "CONFIRMED",
-      extractedValue: String(formData.get("edited") || row.extractedValue),
+      status: decision === "reject" ? "REJECTED" : "CONFIRMED",
+      confirmed: decision !== "reject",
+      confirmedAt: decision === "reject" ? null : new Date(),
+      originalValue: row.originalValue || row.extractedValue,
+      editedValue: edited && edited !== row.extractedValue ? edited : row.editedValue,
+      editedBy: edited && edited !== row.extractedValue ? session.userId : row.editedBy,
+      editedAt: edited && edited !== row.extractedValue ? new Date() : row.editedAt,
+      extractedValue: nextValue,
     },
   });
-  revalidatePath(`/returns/${row.document.returnId}/documents`);
+  const fact = await prisma.taxFact.findFirst({
+    where: { sourceDocumentId: row.documentId, field: row.fieldKey },
+  });
+  if (fact) {
+    const verified = decision !== "reject";
+    await prisma.taxFact.update({
+      where: { id: fact.id },
+      data: {
+        verified,
+        verifiedBy: verified ? session.userId : "",
+        verifiedAt: verified ? new Date() : null,
+        status: decision === "reject" ? "REJECTED" : "VERIFIED",
+        value: nextValue,
+        originalValue: fact.originalValue || fact.value,
+        editedValue: edited && edited !== fact.value ? edited : fact.editedValue,
+      },
+    });
+  }
+  await audit({
+    userId: session.userId,
+    returnId: row.document.returnId,
+    action: decision === "reject" ? "REJECTED" : edited ? "EDITED" : "VERIFIED",
+    entity: "DocumentExtraction",
+    entityId: row.id,
+  });
+  const remaining = await prisma.taxFact.count({
+    where: { sourceDocumentId: row.documentId, status: { in: ["PENDING", "CONFLICT"] } },
+  });
+  if (remaining === 0 && row.documentId) {
+    await prisma.document.update({ where: { id: row.documentId }, data: { status: decision === "reject" ? "NEEDS_REVIEW" : "VERIFIED" } });
+  }
+  const rid = row.document.returnId;
+  if (rid) {
+    revalidatePath(`/returns/${rid}/documents`);
+    revalidatePath(`/returns/${rid}/documents/${row.documentId}`);
+  }
 }
 
-void f;
-void createHash;
+export async function applyVerifiedDocumentsAction(formData: FormData) {
+  const session = await getSession();
+  if (!session) redirect("/login");
+  const id = String(formData.get("returnId") || "");
+  const ret = await prisma.taxReturn.findFirst({ where: { id, userId: session.userId } });
+  if (!ret) redirect("/dashboard");
+  await applyVerifiedFactsToTaxModel(id);
+  await audit({ userId: session.userId, returnId: id, action: "APPLIED_TAXFACTS", entity: "TaxReturn", entityId: id });
+  revalidatePath(`/returns/${id}/income`);
+  redirect(`/returns/${id}/income`);
+}
+
+export async function classifyBankTxAction(formData: FormData) {
+  const session = await getSession();
+  if (!session) return;
+  const txId = String(formData.get("txId") || "");
+  const category = String(formData.get("category") || "UNKNOWN");
+  const row = await prisma.bankTransaction.findUnique({ where: { id: txId }, include: { document: true } });
+  if (!row || row.document.userId !== session.userId) return;
+  await prisma.bankTransaction.update({
+    where: { id: txId },
+    data: { category, verified: category !== "UNKNOWN" },
+  });
+  revalidatePath(`/returns/${row.returnId}/documents/${row.documentId}`);
+}

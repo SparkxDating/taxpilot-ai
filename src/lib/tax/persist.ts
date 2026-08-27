@@ -109,6 +109,26 @@ export async function recomputeReturn(returnId: string) {
   if (issues.filter((i) => i.severity === "ERROR").length === 0 && calc.grossTotalIncome > 0) completion += 5;
   completion = Math.min(100, completion);
   const itrType = eligWithIncome.recommended === "UNSUPPORTED" ? "ITR-3" : eligWithIncome.recommended;
+  const facts = await prisma.taxFact.findMany({ where: { returnId } });
+  const form16Tds = facts.find((f) => f.field === "tds");
+  const aisTds = facts.find((f) => f.field === "ais.tds");
+  if (
+    form16Tds?.numericValue != null &&
+    aisTds?.numericValue != null &&
+    form16Tds.numericValue !== aisTds.numericValue &&
+    (form16Tds.status === "CONFLICT" || aisTds.status === "CONFLICT")
+  ) {
+    issues.push({
+      id: "TDS_RECONCILE",
+      level: 2,
+      severity: "ERROR",
+      section: "TDS",
+      field: "tds",
+      message: "Form 16 TDS and AIS TDS do not match.",
+      suggestion: "Resolve the document conflict before generating JSON.",
+      href: `/returns/${returnId}/documents`,
+    });
+  }
   const hasError = issues.some((i) => i.severity === "ERROR");
   const fingerprint = createHash("sha256").update(JSON.stringify(data)).digest("hex");
   const life = nextJsonFileStatuses(ret.dataFingerprint || null, fingerprint);
