@@ -78,6 +78,7 @@ export default async function IncomePage({ params }: { params: Promise<{ id: str
               <Input name="employerName" placeholder="Employer" defaultValue={s?.employerName} />
               <PrefillNote entry={prep.fields["salary.employerName"]} returnId={id} field="salary.employerName" />
               <Input name="employerTan" placeholder="TAN" defaultValue={s?.employerTan} />
+              <PrefillNote entry={prep.fields["salary.employerTan"]} returnId={id} field="salary.employerTan" />
               <Input name="grossSalary" type="number" placeholder="Gross salary" defaultValue={s?.grossSalary || ""} />
               <PrefillNote entry={prep.fields["salary.grossSalary"]} returnId={id} field="salary.grossSalary" />
               <Input name="salaryTds" type="number" placeholder="TDS on salary" defaultValue={s?.tds || ""} />
@@ -98,6 +99,7 @@ export default async function IncomePage({ params }: { params: Promise<{ id: str
               </select>
               <Input name="turnover" type="number" placeholder="Turnover" defaultValue={b?.turnover || ""} />
               <Input name="digitalReceipts" type="number" placeholder="Digital receipts" defaultValue={b?.digitalReceipts || ""} />
+              <PrefillNote entry={prep.fields["business.receipts"]} returnId={id} field="business.receipts" />
               <Input name="cashReceipts" type="number" placeholder="Cash receipts" defaultValue={b?.cashReceipts || ""} />
               <Input name="declaredBusiness" type="number" placeholder="Declared income (optional, min 6%/8%)" defaultValue={b?.declaredIncome || ""} />
             </Card>

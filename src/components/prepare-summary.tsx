@@ -1,5 +1,6 @@
 import { Badge, Card } from "@/components/ui";
 import type { PrefillEntry, SectionStatus } from "@/lib/documents/prefill";
+import { inr } from "@/lib/utils";
 
 export function PrepareSummary({
   documents,
@@ -39,6 +40,24 @@ export function PrepareSummary({
   );
 }
 
+function prettySource(raw: string) {
+  if (raw === "FORM_16") return "Form 16";
+  if (raw === "BANK_STATEMENT") return "Bank statement";
+  if (raw === "USER_INPUT") return "Manual entry";
+  return raw.replaceAll("_", " ");
+}
+
+function displayValue(value: string) {
+  if (/^-?\d+$/.test(value.trim())) return inr(Number(value));
+  return value;
+}
+
+function sourceLine(entry: PrefillEntry) {
+  const label = prettySource(entry.sourceDocumentType || entry.source);
+  const page = entry.sourcePage ? ` · Page ${entry.sourcePage}` : "";
+  return `${label}${page}`;
+}
+
 export function PrefillNote({
   entry,
   field,
@@ -47,28 +66,21 @@ export function PrefillNote({
   returnId?: string;
   field: string;
 }) {
-  if (!entry) return <p className="sans text-xs text-[#5c6773]">Source: USER_INPUT if you type a value.</p>;
-  const page = entry.sourcePage ? ` · Page ${entry.sourcePage}` : "";
+  if (!entry) return null;
   if (entry.origin === "IMPORTED") {
-    return (
-      <p className="sans text-xs text-[#5c6773]">
-        ✓ Imported from verified {entry.source.replaceAll("_", " ")}
-        {page} · Verified
-      </p>
-    );
+    return <p className="sans text-xs text-[#5c6773]">Imported from {sourceLine(entry)}</p>;
   }
   if (entry.origin === "USER_EDITED") {
     return (
       <div className="sans text-xs text-[#5c6773]">
-        <p>
-          User edited · original {entry.source.replaceAll("_", " ")} {entry.originalValue}
-          {page}
-        </p>
+        <p>Current: {displayValue(entry.currentValue)}</p>
+        <p>Imported: {displayValue(entry.originalValue)}</p>
+        <p>Source: {sourceLine(entry)}</p>
         <button type="submit" form={`reset-${field}`} className="mt-1 text-[#1f4e46] underline">
           Reset to imported value
         </button>
       </div>
     );
   }
-  return <p className="sans text-xs text-[#5c6773]">Source: USER_INPUT</p>;
+  return <p className="sans text-xs text-[#5c6773]">Source: Manual entry</p>;
 }

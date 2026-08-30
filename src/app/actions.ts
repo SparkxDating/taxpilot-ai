@@ -170,83 +170,109 @@ export async function saveIncomeAction(formData: FormData) {
   if (!ret) redirect("/dashboard");
   const existingSalary = await prisma.salaryIncome.findFirst({ where: { returnId: id } });
   const prep = parsePreparation(ret.preparationJson);
-  const track = (path: string, raw: string) => {
+  const track = (formKey: string, path: string) => {
+    if (!formData.has(formKey)) return;
+    const raw = String(formData.get(formKey) || "");
+    if (!prep.fields[path] && raw.trim() === "") return;
     prep.fields[path] = classifyEdit(prep.fields[path], raw);
   };
-  track("salary.grossSalary", String(formData.get("grossSalary") || ""));
-  track("salary.tds", String(formData.get("salaryTds") || ""));
-  track("salary.employerName", String(formData.get("employerName") || ""));
-  track("income.interest", String(formData.get("interest") || ""));
-  track("income.dividend", String(formData.get("dividend") || ""));
-  await prisma.salaryIncome.deleteMany({ where: { returnId: id } });
-  await prisma.businessIncome.deleteMany({ where: { returnId: id } });
-  await prisma.professionalIncome.deleteMany({ where: { returnId: id } });
-  await prisma.otherIncome.deleteMany({ where: { returnId: id } });
-  await prisma.houseProperty.deleteMany({ where: { returnId: id } });
-  if (n(String(formData.get("grossSalary")))) {
-    await prisma.salaryIncome.create({
-      data: {
-        returnId: id,
-        employerName: String(formData.get("employerName") || ""),
-        employerTan: String(formData.get("employerTan") || "").toUpperCase(),
-        grossSalary: n(String(formData.get("grossSalary"))),
-        tds: n(String(formData.get("salaryTds"))),
-        exemptions: existingSalary?.exemptions ?? 0,
-        standardDeduction: existingSalary?.standardDeduction ?? 0,
-      },
-    });
+  track("grossSalary", "salary.grossSalary");
+  track("salaryTds", "salary.tds");
+  track("employerName", "salary.employerName");
+  track("employerTan", "salary.employerTan");
+  track("interest", "income.interest");
+  track("dividend", "income.dividend");
+  track("digitalReceipts", "business.receipts");
+
+  if (formData.has("grossSalary") || formData.has("employerName")) {
+    const data = {
+      employerName: String(formData.get("employerName") || ""),
+      employerTan: String(formData.get("employerTan") || "").toUpperCase(),
+      grossSalary: n(String(formData.get("grossSalary"))),
+      tds: n(String(formData.get("salaryTds"))),
+      exemptions: existingSalary?.exemptions ?? 0,
+      standardDeduction: existingSalary?.standardDeduction ?? 0,
+    };
+    if (existingSalary) {
+      await prisma.salaryIncome.update({ where: { id: existingSalary.id }, data });
+    } else if (data.grossSalary || data.tds || data.employerName) {
+      await prisma.salaryIncome.create({ data: { returnId: id, ...data } });
+    }
   }
-  if (n(String(formData.get("turnover"))) || n(String(formData.get("digitalReceipts")))) {
+
+  if (formData.has("turnover") || formData.has("digitalReceipts")) {
+    const existingBiz = await prisma.businessIncome.findFirst({ where: { returnId: id } });
     const digital = n(String(formData.get("digitalReceipts")));
     const cash = n(String(formData.get("cashReceipts")));
     const turnover = n(String(formData.get("turnover"))) || digital + cash;
-    await prisma.businessIncome.create({
-      data: {
-        returnId: id,
-        section: "44AD",
-        nature: String(formData.get("nature") || "").trim(),
-        natureCode: String(formData.get("natureCode") || "").trim(),
-        turnover,
-        digitalReceipts: digital,
-        cashReceipts: cash,
-        declaredIncome: n(String(formData.get("declaredBusiness"))),
-      },
-    });
+    const data = {
+      section: "44AD" as const,
+      nature: String(formData.get("nature") || "").trim(),
+      natureCode: String(formData.get("natureCode") || "").trim(),
+      turnover,
+      digitalReceipts: digital,
+      cashReceipts: cash,
+      declaredIncome: n(String(formData.get("declaredBusiness"))),
+    };
+    if (existingBiz) {
+      await prisma.businessIncome.update({ where: { id: existingBiz.id }, data });
+    } else if (turnover || digital) {
+      await prisma.businessIncome.create({ data: { returnId: id, ...data } });
+    }
   }
-  if (n(String(formData.get("grossReceipts")))) {
-    await prisma.professionalIncome.create({
-      data: {
-        returnId: id,
-        section: "44ADA",
-        profession: String(formData.get("profession") || "").trim(),
-        natureCode: String(formData.get("professionCode") || "").trim(),
-        grossReceipts: n(String(formData.get("grossReceipts"))),
-        cashReceipts: n(String(formData.get("profCash"))),
-        declaredIncome: n(String(formData.get("declaredProfession"))),
-        personalNotCompany: String(formData.get("personalNotCompany") || "Yes") === "Yes",
-      },
-    });
+
+  if (formData.has("grossReceipts")) {
+    const existingProf = await prisma.professionalIncome.findFirst({ where: { returnId: id } });
+    const data = {
+      section: "44ADA" as const,
+      profession: String(formData.get("profession") || "").trim(),
+      natureCode: String(formData.get("professionCode") || "").trim(),
+      grossReceipts: n(String(formData.get("grossReceipts"))),
+      cashReceipts: n(String(formData.get("profCash"))),
+      declaredIncome: n(String(formData.get("declaredProfession"))),
+      personalNotCompany: String(formData.get("personalNotCompany") || "Yes") === "Yes",
+    };
+    if (existingProf) {
+      await prisma.professionalIncome.update({ where: { id: existingProf.id }, data });
+    } else if (data.grossReceipts) {
+      await prisma.professionalIncome.create({ data: { returnId: id, ...data } });
+    }
   }
-  if (n(String(formData.get("interest")))) {
-    await prisma.otherIncome.create({
-      data: { returnId: id, kind: "Interest", amount: n(String(formData.get("interest"))), source: String(formData.get("interestSource") || "").trim() },
-    });
+
+  if (formData.has("interest")) {
+    const existing = await prisma.otherIncome.findFirst({ where: { returnId: id, kind: "Interest" } });
+    const amount = n(String(formData.get("interest")));
+    const source = String(formData.get("interestSource") || "").trim();
+    if (existing) {
+      await prisma.otherIncome.update({ where: { id: existing.id }, data: { amount, source } });
+    } else if (amount) {
+      await prisma.otherIncome.create({ data: { returnId: id, kind: "Interest", amount, source } });
+    }
   }
-  if (n(String(formData.get("dividend")))) {
-    await prisma.otherIncome.create({
-      data: { returnId: id, kind: "Dividend", amount: n(String(formData.get("dividend"))), source: String(formData.get("dividendSource") || "").trim() },
-    });
+
+  if (formData.has("dividend")) {
+    const existing = await prisma.otherIncome.findFirst({ where: { returnId: id, kind: "Dividend" } });
+    const amount = n(String(formData.get("dividend")));
+    if (existing) {
+      await prisma.otherIncome.update({ where: { id: existing.id }, data: { amount } });
+    } else if (amount) {
+      await prisma.otherIncome.create({ data: { returnId: id, kind: "Dividend", amount, source: "" } });
+    }
   }
-  if (String(formData.get("hpOccupancy"))) {
-    await prisma.houseProperty.create({
-      data: {
-        returnId: id,
-        occupancy: String(formData.get("hpOccupancy") || "SELF_OCCUPIED"),
-        annualLetableValue: n(String(formData.get("hpAlv"))),
-        municipalTaxes: n(String(formData.get("hpMunicipal"))),
-        interestOnLoan: n(String(formData.get("hpInterest"))),
-      },
-    });
+
+  if (formData.has("hpOccupancy") && String(formData.get("hpOccupancy"))) {
+    const existingHp = await prisma.houseProperty.findFirst({ where: { returnId: id } });
+    const data = {
+      occupancy: String(formData.get("hpOccupancy") || "SELF_OCCUPIED"),
+      annualLetableValue: n(String(formData.get("hpAlv"))),
+      municipalTaxes: n(String(formData.get("hpMunicipal"))),
+      interestOnLoan: n(String(formData.get("hpInterest"))),
+    };
+    if (existingHp) {
+      await prisma.houseProperty.update({ where: { id: existingHp.id }, data });
+    } else {
+      await prisma.houseProperty.create({ data: { returnId: id, ...data } });
+    }
   }
   const regime = String(formData.get("regime") || "");
   await prisma.taxReturn.update({
@@ -272,20 +298,34 @@ export async function resetImportedFieldAction(formData: FormData) {
   const entry = prep.fields[field];
   if (!entry) redirect(`/returns/${id}/income`);
   prep.fields[field] = resetToImported(entry);
-  const restored = parseAmount(entry.originalValue) ?? n(entry.originalValue);
-  if (field === "salary.grossSalary" || field === "salary.tds") {
+  const restored = prep.fields[field].currentValue;
+  const restoredNum = parseAmount(restored) ?? n(restored);
+  if (field.startsWith("salary.")) {
     const salary = await prisma.salaryIncome.findFirst({ where: { returnId: id } });
     if (salary) {
-      await prisma.salaryIncome.update({
-        where: { id: salary.id },
-        data: field === "salary.grossSalary" ? { grossSalary: restored } : { tds: restored },
-      });
+      const data =
+        field === "salary.grossSalary" ? { grossSalary: restoredNum }
+        : field === "salary.tds" ? { tds: restoredNum }
+        : field === "salary.employerName" ? { employerName: restored }
+        : field === "salary.employerTan" ? { employerTan: restored }
+        : field === "salary.exemptions" ? { exemptions: restoredNum }
+        : field === "salary.standardDeduction" ? { standardDeduction: restoredNum }
+        : null;
+      if (data) await prisma.salaryIncome.update({ where: { id: salary.id }, data });
     }
   }
   if (field === "income.interest" || field === "income.dividend") {
     const kind = field === "income.interest" ? "Interest" : "Dividend";
-    await prisma.otherIncome.deleteMany({ where: { returnId: id, kind } });
-    if (restored) await prisma.otherIncome.create({ data: { returnId: id, kind, amount: restored, source: entry.source } });
+    const existing = await prisma.otherIncome.findFirst({ where: { returnId: id, kind } });
+    if (existing) {
+      await prisma.otherIncome.update({ where: { id: existing.id }, data: { amount: restoredNum } });
+    } else if (restoredNum) {
+      await prisma.otherIncome.create({ data: { returnId: id, kind, amount: restoredNum, source: entry.source } });
+    }
+  }
+  if (field === "business.receipts") {
+    const biz = await prisma.businessIncome.findFirst({ where: { returnId: id } });
+    if (biz) await prisma.businessIncome.update({ where: { id: biz.id }, data: { digitalReceipts: restoredNum } });
   }
   await prisma.taxReturn.update({ where: { id }, data: { preparationJson: JSON.stringify(prep) } });
   await audit({ userId: session.userId, returnId: id, action: "PREP_RESET_IMPORTED", entity: "TaxReturn", entityId: id, metadata: { field } });

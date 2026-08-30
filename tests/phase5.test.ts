@@ -80,6 +80,7 @@ describe("Phase 5 verified prefill", () => {
     const manual = classifyEdit(undefined, "50000");
     expect(manual.origin).toBe("USER_INPUT");
     expect(manual.source).toBe("USER_INPUT");
+    expect(shouldOverwriteFromVerified(manual)).toBe(false);
   });
 
   it("calls the existing tax engine path and keeps the JSON gate authoritative", () => {
