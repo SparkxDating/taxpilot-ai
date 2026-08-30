@@ -13,6 +13,8 @@ import { PrepareSummary } from "@/components/prepare-summary";
 import { generateJsonAction, resolveConflictAction } from "@/app/actions";
 import { canGenerateItrJson } from "@/lib/itr-json/mapper";
 import { reviewReadiness } from "@/lib/review/readiness";
+import { getUserAccess } from "@/lib/plan";
+import { ProUpgradeCard } from "@/components/upgrade-cta";
 
 type ConflictFact = { id: string; documentType: string; value: string; numericValue: number | null };
 
@@ -61,6 +63,7 @@ export default async function ReviewPage({ params }: { params: Promise<{ id: str
   const session = await getSession();
   if (!session) redirect("/login");
   const { id } = await params;
+  const access = await getUserAccess(session.userId);
   const ret = await prisma.taxReturn.findFirst({
     where: { id, userId: session.userId },
     include: {
@@ -271,10 +274,14 @@ export default async function ReviewPage({ params }: { params: Promise<{ id: str
         {ready ? (
           <Card className="mt-4">
             <p className="font-medium">✓ Return ready for ITR-4 JSON generation</p>
-            <form action={generateJsonAction} className="mt-4">
-              <input type="hidden" name="returnId" value={id} />
-              <Button type="submit">Generate ITR JSON</Button>
-            </form>
+            {access.isPro ? (
+              <form action={generateJsonAction} className="mt-4">
+                <input type="hidden" name="returnId" value={id} />
+                <Button type="submit">Generate ITR JSON</Button>
+              </form>
+            ) : (
+              <ProUpgradeCard />
+            )}
             {ret.jsonFiles[0]?.valid ? (
               <p className="sans mt-3 text-sm text-emerald-800">JSON generated successfully · Schema validation passed</p>
             ) : null}
