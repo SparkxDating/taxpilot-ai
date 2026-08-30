@@ -5,6 +5,7 @@ import { prisma } from "@/lib/db";
 import { mkdir, writeFile } from "fs/promises";
 import path from "path";
 import { audit } from "@/lib/audit";
+import { getUserAccess, proRequiredBody } from "@/lib/plan";
 
 export async function POST(_: Request, { params }: { params: Promise<{ id: string }> }) {
   const { session, error } = await authed();
@@ -12,6 +13,8 @@ export async function POST(_: Request, { params }: { params: Promise<{ id: strin
   const { id } = await params;
   const found = await loadOwnedReturn(id, session.userId, session.role);
   if (!found.ret) return found.error;
+  const access = await getUserAccess(session.userId);
+  if (!access.isPro) return NextResponse.json(proRequiredBody(), { status: 403 });
   const gate = await canGenerateItrJson(id, { ownerUserId: session.role === "ADMIN" ? undefined : session.userId });
   if (gate.error === "empty") return NextResponse.json({ error: "Unable to generate the return." }, { status: 400 });
   if (gate.error === "itr3") {
