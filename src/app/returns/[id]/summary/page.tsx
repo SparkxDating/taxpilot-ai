@@ -8,12 +8,15 @@ import { json, inr } from "@/lib/utils";
 import { generateJsonAction } from "@/app/actions";
 import type { TaxComputation } from "@/lib/tax/engine";
 import Link from "next/link";
+import { getUserAccess } from "@/lib/plan";
+import { ProUpgradeCard } from "@/components/upgrade-cta";
 
-export default async function SummaryPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ generated?: string }> }) {
+export default async function SummaryPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ generated?: string; upgrade?: string }> }) {
   const session = await getSession();
   if (!session) redirect("/login");
   const { id } = await params;
   const { generated } = await searchParams;
+  const access = await getUserAccess(session.userId);
   const ret = await prisma.taxReturn.findFirst({
     where: { id, userId: session.userId },
     include: {
@@ -90,13 +93,15 @@ export default async function SummaryPage({ params, searchParams }: { params: Pr
               ? "ITR-3 preparation is currently in development. Filing JSON generation is not available yet."
               : "Unable to generate the return. Please correct the highlighted issues."}
           </p>
-        ) : (
+        ) : access.isPro ? (
           <form action={generateJsonAction} className="mt-6">
             <input type="hidden" name="returnId" value={id} />
             <Button type="submit">Generate ITR JSON</Button>
           </form>
+        ) : (
+          <ProUpgradeCard />
         )}
-        {ret.jsonFiles[0] ? (
+        {access.isPro && ret.jsonFiles[0] ? (
           <Link href={`/api/returns/${id}/download-json`} className="sans mt-4 inline-block text-sm text-[#1f4e46]">
             Download ITR JSON
           </Link>
