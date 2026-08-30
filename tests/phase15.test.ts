@@ -70,6 +70,21 @@ function createMemory(seedUsers: string[] = ["user-a"]) {
       activateCalls += 1;
       plans.set(userId, { plan: "PRO", status: "ACTIVE" });
     },
+    async completePaidPro(paymentId, userId) {
+      const row = payments.find((item) => item.id === paymentId);
+      if (!row) throw new Error("missing payment");
+      const previousStatus = row.status;
+      const previousPlan = plans.get(userId);
+      try {
+        row.status = PAYMENT_STATUS_PAID;
+        activateCalls += 1;
+        plans.set(userId, { plan: "PRO", status: "ACTIVE" });
+      } catch (error) {
+        row.status = previousStatus;
+        if (previousPlan) plans.set(userId, previousPlan);
+        throw error;
+      }
+    },
   };
   return {
     store,
