@@ -9,10 +9,17 @@ export default async function Login({ searchParams }: { searchParams: Promise<{ 
   const { error, reset } = await searchParams;
   const demo = isDemoMode();
   return (
-    <div>
+    <div className="min-w-0">
       <SiteHeader />
-      <div className="mx-auto max-w-md px-6 py-16">
-        <Card>
+      <div className="mx-auto w-full min-w-0 max-w-md px-4 py-10 sm:px-6 sm:py-16">
+        <Card className="min-w-0">
+          <img
+            src="/taxpilot-ai-logo.png"
+            alt="TaxPilot AI"
+            width={180}
+            height={52}
+            className="mb-4 h-10 w-[132px] max-w-full object-cover object-center sm:h-[52px] sm:w-[172px]"
+          />
           <h1 className="text-2xl">Log in</h1>
           {reset ? <p className="sans mt-2 text-sm text-emerald-800">{SUCCESS_MESSAGE}</p> : null}
           {error ? (

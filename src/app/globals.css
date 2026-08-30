@@ -20,10 +20,22 @@
   --font-sans: var(--font-source);
 }
 
+html {
+  max-width: 100%;
+}
+
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-source), "Source Serif 4", Georgia, serif;
+  max-width: 100%;
+  min-width: 0;
+}
+
+img,
+svg,
+video {
+  max-width: 100%;
 }
 
 .sans {
