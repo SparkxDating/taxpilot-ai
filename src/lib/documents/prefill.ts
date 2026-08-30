@@ -352,6 +352,68 @@ export function simpleDocumentStatus(input: {
   return "NEEDS REVIEW";
 }
 
+export const PROCESSABLE_DOCUMENT_TYPES = ["FORM_16", "AIS", "TIS", "BANK_STATEMENT"] as const;
+
+export function processableDocumentLabel(kind: string) {
+  if (kind === "FORM_16") return "Form 16";
+  if (kind === "BANK_STATEMENT") return "Bank statement";
+  return kind.replaceAll("_", " ");
+}
+
+export function documentStatusView(input: {
+  status: string;
+  errorCode?: string | null;
+  factStatuses?: string[];
+}): { label: string; prefix: string; tone: "ok" | "warn" | "err" } {
+  const simple = simpleDocumentStatus(input);
+  if (simple === "FAILED") return { label: "FAILED", prefix: "✕", tone: "err" };
+  if (simple === "PROCESSING") return { label: "PROCESSING", prefix: "", tone: "warn" };
+  if (simple === "CONFLICT") return { label: "CONFLICT", prefix: "⚠", tone: "err" };
+  if (simple === "VERIFIED") return { label: "VERIFIED", prefix: "✓", tone: "ok" };
+  if (input.status === "EXTRACTED") return { label: "EXTRACTED", prefix: "✓", tone: "ok" };
+  return { label: "NEEDS REVIEW", prefix: "⚠", tone: "warn" };
+}
+
+export function uploadErrorMessage(code?: string | null) {
+  const key = String(code || "").toLowerCase();
+  if (!key) return "";
+  if (key === "file") return "Please choose a file to upload.";
+  if (key === "invalid_type") return "This file type is not supported. Use PDF, JPEG, PNG, CSV, TXT, or XLSX.";
+  if (key === "empty") return "This file is empty and cannot be processed.";
+  if (key === "oversize") return "This file is too large. Maximum size is 12 MB.";
+  return "Upload was rejected. Check the file and try again.";
+}
+
+const FACT_LABELS: Record<string, string> = {
+  grossSalary: "Salary",
+  "salary.grossSalary": "Salary",
+  "income.salary.ais": "Salary",
+  tds: "TDS",
+  "salary.tds": "TDS",
+  "tds.ais": "TDS",
+  "tds.tis": "TDS",
+  employerName: "Employer information",
+  employerTan: "Employer information",
+  "salary.employerName": "Employer information",
+  "salary.employerTan": "Employer information",
+  interest: "Interest",
+  "income.interest": "Interest",
+  dividend: "Dividend",
+  "income.dividend": "Dividend",
+  exemptAllowances: "Salary",
+};
+
+export function extractedFactLabels(fields: Array<{ field?: string; normalizedTaxField?: string; value?: string | null }>) {
+  const labels: string[] = [];
+  for (const f of fields) {
+    if (!f.value) continue;
+    const key = f.normalizedTaxField || f.field || "";
+    const label = FACT_LABELS[key] || FACT_LABELS[key.split(".").pop() || ""];
+    if (label && !labels.includes(label)) labels.push(label);
+  }
+  return labels;
+}
+
 function prettyDocSource(raw: string) {
   if (raw === "FORM_16") return "Form 16";
   if (raw === "BANK_STATEMENT") return "Bank statement";

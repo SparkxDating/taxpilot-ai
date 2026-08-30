@@ -6,6 +6,12 @@ import { ReturnNav } from "@/components/return-nav";
 import { Badge, Button, Card, Input } from "@/components/ui";
 import { classifyBankTxAction, reprocessDocumentAction, reviewExtractionAction } from "@/app/actions";
 import { confidenceLevel, displayExtractionMethod } from "@/lib/documents/types";
+import {
+  documentStatusView,
+  extractedFactLabels,
+  parsePreparation,
+  processableDocumentLabel,
+} from "@/lib/documents/prefill";
 import Link from "next/link";
 
 export default async function DocumentDetailPage({
@@ -24,6 +30,18 @@ export default async function DocumentDetailPage({
     include: { extractions: true, taxFacts: true, bankTx: true },
   });
   if (!doc) notFound();
+  const ret = await prisma.taxReturn.findFirst({ where: { id, userId: session.userId }, select: { preparationJson: true } });
+  const prep = parsePreparation(ret?.preparationJson);
+  const appliedHere = Object.values(prep.fields).filter(
+    (e) => e.sourceDocumentId === doc.id && (e.origin === "IMPORTED" || e.origin === "USER_EDITED"),
+  ).length;
+  const view = documentStatusView({
+    status: doc.status,
+    errorCode: doc.errorCode,
+    factStatuses: doc.taxFacts.map((f) => f.status),
+  });
+  const facts = extractedFactLabels(doc.taxFacts);
+  const needsVerify = doc.taxFacts.some((f) => ["AI_EXTRACTED", "PENDING"].includes(f.status) || (!f.verified && f.status !== "REJECTED"));
   return (
     <div>
       <SiteHeader authed name={session.name} />
@@ -32,24 +50,54 @@ export default async function DocumentDetailPage({
         <p className="sans text-sm">
           <Link href={`/returns/${id}/documents`}>← Documents</Link>
         </p>
-        <h1 className="mt-2 text-3xl">{doc.kind.replaceAll("_", " ")}</h1>
+        <h1 className="mt-2 text-3xl break-all">{processableDocumentLabel(doc.kind)}</h1>
         <p className="sans mt-1 text-sm text-[#5c6773]">
-          {doc.fileName} · {doc.status}
-          {doc.errorCode ? ` · ${doc.errorCode}` : ""}
+          {doc.fileName} · {view.prefix ? `${view.prefix} ` : ""}
+          {view.label}
         </p>
+        {view.label === "PROCESSING" ? <p className="sans mt-2 text-sm text-[#5c6773]">Processing document…</p> : null}
         {duplicate ? (
           <Card className="mt-4">
-            <p className="font-medium">DUPLICATE_DOCUMENT</p>
+            <p className="font-medium">This document has already been processed.</p>
             <p className="sans text-sm text-[#5c6773]">
-              This file was already uploaded. It was not reprocessed and the original was not deleted. Tick “Upload even
-              if this file is a duplicate” on the documents page if you need a second copy.
+              It was not reprocessed and the original was not deleted. Tick “Upload even if this file is a duplicate” on the
+              documents page if you need a second copy.
             </p>
           </Card>
         ) : null}
-        {doc.errorMessage ? <p className="sans mt-2 text-sm text-amber-800">{doc.errorMessage}</p> : null}
+        {view.label === "FAILED" ? (
+          <Card className="mt-4">
+            <p className="font-medium">Document could not be processed.</p>
+            <p className="sans text-sm text-[#5c6773]">You can retry processing or enter values manually.</p>
+          </Card>
+        ) : null}
+        {view.label === "CONFLICT" ? (
+          <Card className="mt-4">
+            <p className="font-medium">Some information conflicts with another document.</p>
+            <Link href={`/returns/${id}/documents#conflicts`} className="sans mt-2 inline-flex min-h-11 items-center text-sm underline">
+              Review conflict
+            </Link>
+          </Card>
+        ) : null}
+        {facts.length ? (
+          <Card className="mt-4">
+            <p className="font-medium">
+              {processableDocumentLabel(doc.kind)}
+              {view.label === "EXTRACTED" || view.label === "VERIFIED" ? " · Processed" : ""}
+            </p>
+            <p className="sans mt-1 text-sm text-[#5c6773]">Facts found: {facts.join(", ")}</p>
+          </Card>
+        ) : null}
+        {appliedHere > 0 ? (
+          <Card className="mt-4">
+            <p className="font-medium">Verified information added to your ITR-4.</p>
+            <p className="sans text-sm text-[#5c6773]">{appliedHere} fields updated</p>
+          </Card>
+        ) : null}
+        {needsVerify ? <h2 className="mt-6 text-xl">Review & Verify</h2> : null}
         <form action={reprocessDocumentAction} className="mt-4">
           <input type="hidden" name="documentId" value={doc.id} />
-          <Button type="submit" variant="outline">
+          <Button type="submit" variant="outline" className="min-h-11" aria-label="Reprocess this document">
             Reprocess
           </Button>
         </form>
@@ -60,8 +108,8 @@ export default async function DocumentDetailPage({
             const low = level === "LOW";
             return (
               <Card key={e.id} className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <p className="font-medium">{e.fieldKey.startsWith("txn.") ? `AIS transaction ${e.fieldKey.slice(4)}` : e.fieldKey}</p>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="font-medium break-all">{e.fieldKey.startsWith("txn.") ? `AIS transaction ${e.fieldKey.slice(4)}` : e.fieldKey}</p>
                   <Badge tone={fact?.status === "CONFLICT" ? "err" : low ? "err" : e.confidence >= 0.9 ? "ok" : "warn"}>
                     {level} {(e.confidence * 100).toFixed(0)}%
                   </Badge>
@@ -78,24 +126,35 @@ export default async function DocumentDetailPage({
                   <p className="sans text-xs text-[#5c6773]">Maps to {fact.normalizedTaxField}</p>
                 ) : null}
                 {fact?.status === "CONFLICT" ? (
-                  <p className="text-sm text-red-800">CONFLICT — resolve it on the documents page. Verify is blocked.</p>
+                  <p className="text-sm text-red-800">
+                    Some information conflicts with another document.{" "}
+                    <Link href={`/returns/${id}/documents#conflicts`} className="underline">
+                      Review conflict
+                    </Link>
+                  </p>
                 ) : null}
                 <div className="flex flex-wrap gap-2">
                   <form action={reviewExtractionAction}>
                     <input type="hidden" name="extractionId" value={e.id} />
                     <input type="hidden" name="decision" value="confirm" />
-                    <Button type="submit">Verify</Button>
+                    <Button type="submit" className="min-h-11" aria-label={`Verify ${e.fieldKey}`}>
+                      Verify
+                    </Button>
                   </form>
-                  <form action={reviewExtractionAction} className="flex gap-2">
+                  <form action={reviewExtractionAction} className="flex min-w-0 flex-1 flex-wrap gap-2">
                     <input type="hidden" name="extractionId" value={e.id} />
                     <input type="hidden" name="decision" value="edit" />
-                    <Input name="edited" placeholder="Edit value" />
-                    <Button variant="outline">Edit</Button>
+                    <Input name="edited" placeholder="Edit value" aria-label={`Edit ${e.fieldKey}`} className="min-h-11" />
+                    <Button variant="outline" className="min-h-11" aria-label={`Save edited ${e.fieldKey}`}>
+                      Edit
+                    </Button>
                   </form>
                   <form action={reviewExtractionAction}>
                     <input type="hidden" name="extractionId" value={e.id} />
                     <input type="hidden" name="decision" value="reject" />
-                    <Button variant="ghost">Reject</Button>
+                    <Button variant="ghost" className="min-h-11" aria-label={`Reject ${e.fieldKey}`}>
+                      Reject
+                    </Button>
                   </form>
                 </div>
               </Card>
@@ -109,9 +168,9 @@ export default async function DocumentDetailPage({
               Suggested categories are not tax facts. Only a saved verified category can affect the return.
             </p>
             {doc.bankTx.map((tx) => (
-              <Card key={tx.id} className="mt-2 flex flex-wrap items-center justify-between gap-2">
-                <div>
-                  <p className="text-sm">
+              <Card key={tx.id} className="mt-2 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+                <div className="min-w-0">
+                  <p className="text-sm break-all">
                     {tx.date} · {tx.description}
                   </p>
                   <p className="sans text-xs">
@@ -121,12 +180,13 @@ export default async function DocumentDetailPage({
                     raw {tx.rawCategory} · suggested {tx.suggestedCategory} · verified {tx.verifiedCategory || "null"}
                   </p>
                 </div>
-                <form action={classifyBankTxAction} className="flex gap-2">
+                <form action={classifyBankTxAction} className="flex flex-wrap gap-2">
                   <input type="hidden" name="txId" value={tx.id} />
                   <select
                     name="category"
                     defaultValue={tx.verifiedCategory || tx.suggestedCategory || "UNKNOWN"}
-                    className="sans rounded-md border px-2 py-1 text-xs"
+                    aria-label={`Category for ${tx.description}`}
+                    className="sans min-h-11 rounded-md border px-2 py-1 text-xs"
                   >
                     {["UNKNOWN", "SALARY", "BUSINESS_RECEIPT", "INTEREST", "DIVIDEND", "TRANSFER", "REFUND", "LOAN", "INVESTMENT", "CAPITAL_RECEIPT"].map(
                       (c) => (
@@ -134,7 +194,7 @@ export default async function DocumentDetailPage({
                       ),
                     )}
                   </select>
-                  <Button type="submit" variant="outline">
+                  <Button type="submit" variant="outline" className="min-h-11" aria-label={`Verify category for ${tx.description}`}>
                     Verify category
                   </Button>
                 </form>

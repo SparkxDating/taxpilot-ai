@@ -1,5 +1,5 @@
 import { cn } from "@/lib/utils";
-import { ButtonHTMLAttributes, InputHTMLAttributes } from "react";
+import { ButtonHTMLAttributes, InputHTMLAttributes, LabelHTMLAttributes } from "react";
 
 export function Button({
   className,
@@ -47,8 +47,12 @@ export function Badge({ children, tone = "muted" }: { children: React.ReactNode;
   return <span className={cn("sans rounded-full px-2.5 py-0.5 text-xs", map[tone])}>{children}</span>;
 }
 
-export function Label({ children }: { children: React.ReactNode }) {
-  return <label className="sans mb-1 block text-xs font-medium uppercase tracking-wide text-[#5c6773]">{children}</label>;
+export function Label({ children, className, ...props }: LabelHTMLAttributes<HTMLLabelElement>) {
+  return (
+    <label className={cn("sans mb-1 block text-xs font-medium uppercase tracking-wide text-[#5c6773]", className)} {...props}>
+      {children}
+    </label>
+  );
 }
 
 export function Disclaimer() {
