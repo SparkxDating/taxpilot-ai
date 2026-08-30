@@ -6,6 +6,7 @@ import { evaluateDeductions } from "@/lib/tax-engine/ay2026_27/deductions";
 
 export type BusinessIssue = {
   id: string;
+  code?: string;
   severity: "ERROR" | "WARNING" | "INFO";
   field: string;
   section: string;
@@ -13,6 +14,10 @@ export type BusinessIssue = {
   explanation: string;
   fixRoute: string;
 };
+
+function isInvalidNumeric(n: number) {
+  return typeof n !== "number" || Number.isNaN(n) || !Number.isFinite(n);
+}
 
 export function businessValidate(data: NormalizedReturn, returnId = ""): BusinessIssue[] {
   const id = returnId || "new";
@@ -27,6 +32,7 @@ export function businessValidate(data: NormalizedReturn, returnId = ""): Busines
   if (data.itrType === "ITR-3") {
     push({
       id: "ITR3_DISABLED",
+      code: "UNSUPPORTED_SCENARIO",
       severity: "ERROR",
       field: "itrType",
       section: "Eligibility",
@@ -36,11 +42,94 @@ export function businessValidate(data: NormalizedReturn, returnId = ""): Busines
     });
   }
 
+  const money = (
+    value: number,
+    field: string,
+    section: string,
+    messageNeg: string,
+    route: string,
+    opts?: { allowNegative?: boolean; skipNegative?: boolean },
+  ) => {
+    if (isInvalidNumeric(value)) {
+      push({
+        id: `ITR4_NUM_${field.replaceAll(".", "_").toUpperCase()}`,
+        code: "INVALID_NUMERIC_VALUE",
+        severity: "ERROR",
+        field,
+        section,
+        message: `${section}: ${field} is not a valid amount.`,
+        explanation: "Enter a finite number. NaN and Infinity are not allowed.",
+        fixRoute: `/returns/${id}/${route}`,
+      });
+      return;
+    }
+    if (!opts?.allowNegative && !opts?.skipNegative && value < 0) {
+      push({
+        id: `ITR4_NEG_${field.replaceAll(".", "_").toUpperCase()}`,
+        code: "NEGATIVE_VALUE_NOT_ALLOWED",
+        severity: "ERROR",
+        field,
+        section,
+        message: messageNeg,
+        explanation: "This field cannot be negative under the existing return model.",
+        fixRoute: `/returns/${id}/${route}`,
+      });
+    }
+  };
+
+  money(data.salary.gross, "grossSalary", "Salary", "Gross salary cannot be negative.", "income");
+  money(data.salary.exemptions, "exemptions", "Salary", "Salary exemptions cannot be negative.", "income");
+  money(data.salary.tds, "salaryTds", "TDS", "Salary TDS cannot be negative.", "tds");
+  money(data.business.turnover, "turnover", "Business", "Turnover and receipts cannot be negative.", "income", { skipNegative: true });
+  money(data.business.digitalReceipts, "digitalReceipts", "Business", "Turnover and receipts cannot be negative.", "income", { skipNegative: true });
+  money(data.business.cashReceipts, "cashReceipts", "Business", "Turnover and receipts cannot be negative.", "income", { skipNegative: true });
+  money(data.business.declaredIncome, "declaredIncome", "Business", "Declared business income cannot be negative.", "income");
+  money(data.profession.grossReceipts, "grossReceipts", "Profession", "Professional receipts cannot be negative.", "income", { skipNegative: true });
+  money(data.profession.cashReceipts, "professionCashReceipts", "Profession", "Professional cash receipts cannot be negative.", "income");
+  money(data.profession.declaredIncome, "professionDeclaredIncome", "Profession", "Declared professional income cannot be negative.", "income");
+  for (const [i, p] of data.houseProperties.entries()) {
+    money(p.annualLetableValue, `houseProperties.${i}.annualLetableValue`, "House property", "Annual letable value cannot be negative.", "income");
+    money(p.municipalTaxes, `houseProperties.${i}.municipalTaxes`, "House property", "Municipal taxes cannot be negative.", "income");
+    money(p.interestOnLoan, `houseProperties.${i}.interestOnLoan`, "House property", "Interest on housing loan cannot be negative.", "income");
+  }
+  for (const [i, o] of data.otherIncome.entries()) {
+    money(o.amount, `otherIncome.${i}.amount`, "Other sources", "Other income amount is invalid.", "income", { allowNegative: true });
+  }
+  for (const [i, g] of data.capitalGains.entries()) {
+    money(g.amount, `capitalGains.${i}.amount`, "Capital gains", "Capital gain amount is invalid.", "income", { allowNegative: true });
+  }
+  for (const [i, d] of data.deductions.entries()) {
+    money(d.amount, `deductions.${i}.amount`, "Deductions", `${d.section} deduction cannot be negative.`, "deductions");
+  }
+  for (const [i, t] of data.tds.entries()) {
+    money(t.amount, `tds.${i}.amount`, "TDS", "TDS cannot be negative.", "tds");
+    if (t.grossAmount != null) money(t.grossAmount, `tds.${i}.grossAmount`, "TDS", "TDS gross amount cannot be negative.", "tds");
+  }
+  for (const [i, p] of data.taxPayments.entries()) {
+    money(p.amount, `taxPayments.${i}.amount`, "Tax payments", "Tax payment cannot be negative.", "tds");
+  }
+
   if (data.business.turnover < 0 || data.business.cashReceipts < 0 || data.business.digitalReceipts < 0) {
-    push({ id: "ITR4_BP_001", severity: "ERROR", field: "turnover", section: "Business", message: "Turnover and receipts cannot be negative.", explanation: "Replace negative figures with zero or the correct amount." });
+    push({
+      id: "ITR4_BP_001",
+      code: "NEGATIVE_VALUE_NOT_ALLOWED",
+      severity: "ERROR",
+      field: "turnover",
+      section: "Business",
+      message: "Turnover and receipts cannot be negative.",
+      explanation: "Replace negative figures with zero or the correct amount.",
+    });
   }
   if (data.profession.grossReceipts < 0) {
-    push({ id: "ITR4_BP_002", severity: "ERROR", field: "grossReceipts", section: "Profession", message: "Professional receipts cannot be negative.", explanation: "Gross receipts must be zero or positive." });
+    push({
+      id: "ITR4_BP_002",
+      code: "NEGATIVE_VALUE_NOT_ALLOWED",
+      severity: "ERROR",
+      field: "grossReceipts",
+      section: "Profession",
+      message: "Professional receipts cannot be negative.",
+      explanation: "Gross receipts must be zero or positive.",
+    });
   }
   if (data.business.turnover > 0) {
     const p = presumptive44AD(data.business.turnover, data.business.digitalReceipts, data.business.cashReceipts, data.business.declaredIncome);
@@ -112,13 +201,13 @@ export function businessValidate(data: NormalizedReturn, returnId = ""): Busines
 
   const panRe = /^[A-Z]{5}[0-9]{4}[A-Z]$/;
   if (!panRe.test(data.pan)) {
-    push({ id: "ITR4_PI_001", severity: "ERROR", field: "pan", section: "Personal information", message: "PAN is missing or invalid.", explanation: "Enter PAN as AAAAA9999A.", fixRoute: `/returns/${id}/profile` });
+    push({ id: "ITR4_PI_001", code: "REQUIRED_FIELD_MISSING", severity: "ERROR", field: "pan", section: "Personal information", message: "PAN is missing or invalid.", explanation: "Enter PAN as AAAAA9999A.", fixRoute: `/returns/${id}/profile` });
   }
   if (!data.name.trim()) {
-    push({ id: "ITR4_PI_002", severity: "ERROR", field: "name", section: "Personal information", message: "Taxpayer name is required.", explanation: "Name as per PAN is required for Verification.", fixRoute: `/returns/${id}/profile` });
+    push({ id: "ITR4_PI_002", code: "REQUIRED_FIELD_MISSING", severity: "ERROR", field: "name", section: "Personal information", message: "Taxpayer name is required.", explanation: "Name as per PAN is required for Verification.", fixRoute: `/returns/${id}/profile` });
   }
   if (!data.bankAccounts.length) {
-    push({ id: "ITR4_BA_001", severity: "ERROR", field: "bankAccounts", section: "Bank details", message: "At least one bank account is required.", explanation: "The official schema requires bank details for refund credit.", fixRoute: `/returns/${id}/tds` });
+    push({ id: "ITR4_BA_001", code: "REQUIRED_FIELD_MISSING", severity: "ERROR", field: "bankAccounts", section: "Bank details", message: "At least one bank account is required.", explanation: "The official schema requires bank details for refund credit.", fixRoute: `/returns/${id}/tds` });
   }
   const ifscRe = /^[A-Z]{4}0[A-Z0-9]{6}$/;
   for (const b of data.bankAccounts) {
@@ -130,7 +219,8 @@ export function businessValidate(data: NormalizedReturn, returnId = ""): Busines
     }
   }
 
-  for (const d of evaluateDeductions(data.deductions, data.regime)) {
+  const deductionLines = evaluateDeductions(data.deductions, data.regime);
+  for (const d of deductionLines) {
     if (d.disallowedAmount > 0) {
       push({
         id: "ITR4_DED_001",
@@ -158,6 +248,7 @@ export function businessValidate(data: NormalizedReturn, returnId = ""): Busines
   if (calc.flags.includes("UNSUPPORTED_CAPITAL_GAINS")) {
     push({
       id: "ITR4_CG_001",
+      code: "UNSUPPORTED_SCENARIO",
       severity: "ERROR",
       field: "capitalGains",
       section: "Capital gains",
@@ -167,7 +258,7 @@ export function businessValidate(data: NormalizedReturn, returnId = ""): Busines
     });
   }
   if (!data.fatherName && !data.name) {
-    push({ id: "ITR4_VF_001", severity: "ERROR", field: "fatherName", section: "Verification", message: "Father's name is required for verification.", explanation: "Official Verification.Declaration.FatherName is required.", fixRoute: `/returns/${id}/profile` });
+    push({ id: "ITR4_VF_001", code: "REQUIRED_FIELD_MISSING", severity: "ERROR", field: "fatherName", section: "Verification", message: "Father's name is required for verification.", explanation: "Official Verification.Declaration.FatherName is required.", fixRoute: `/returns/${id}/profile` });
   }
   return issues;
 }

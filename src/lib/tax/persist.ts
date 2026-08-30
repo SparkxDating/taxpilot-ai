@@ -94,7 +94,7 @@ export async function recomputeReturn(returnId: string) {
         field: i.field,
         message: i.message,
         suggestion: i.suggestion,
-        code: i.id || "",
+        code: i.code || i.id || "",
         href: i.href.includes("{id}") ? i.href.replace("{id}", returnId) : i.href,
       })),
     });

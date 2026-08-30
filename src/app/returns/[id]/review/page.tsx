@@ -288,8 +288,12 @@ export default async function ReviewPage({ params }: { params: Promise<{ id: str
             <ul className="mt-3 space-y-2">
               {readiness.reasons.map((r) => (
                 <li key={`${r.title}-${r.detail}`}>
-                  <p className="sans text-sm font-medium">{r.title}</p>
+                  <div className="flex items-start justify-between gap-3">
+                    <p className="sans text-sm font-medium">{r.section || r.title}</p>
+                    <Badge tone="err">{r.severity || "BLOCKING"}</Badge>
+                  </div>
                   <p className="sans text-sm text-[#5c6773]">{r.detail}</p>
+                  {r.section ? <p className="sans text-xs text-[#5c6773]">Section: {r.section}</p> : null}
                   {r.href ? (
                     <Link href={r.href} className="sans text-xs text-[#1f4e46] underline">
                       Fix this
@@ -301,9 +305,41 @@ export default async function ReviewPage({ params }: { params: Promise<{ id: str
           </Card>
         )}
 
+        {readiness.warnings.length ? (
+          <Card className="mt-4">
+            <p className="font-medium">Review recommended</p>
+            <ul className="mt-3 space-y-2">
+              {readiness.warnings.map((w) => (
+                <li key={`${w.detail}`}>
+                  <div className="flex items-start justify-between gap-3">
+                    <p className="sans text-sm font-medium">{w.detail}</p>
+                    <Badge tone="warn">WARNING</Badge>
+                  </div>
+                  {w.section ? <p className="sans text-xs text-[#5c6773]">Section: {w.section}</p> : null}
+                </li>
+              ))}
+            </ul>
+          </Card>
+        ) : null}
+
         <div className="mt-6 space-y-3">
-          {ret.validationErrors.map((e) => (
-            <ValidationIssue key={e.id} severity={e.severity as "ERROR" | "WARNING" | "INFO"} title={e.section} message={e.message} suggestion={e.suggestion} href={e.href} />
+          {(gate.result?.errors || []).filter((e) => e.severity === "ERROR").map((e, i) => (
+            <ValidationIssue
+              key={`${e.field || "err"}-${i}`}
+              severity="ERROR"
+              title={`BLOCKING${e.section ? ` · ${e.section}` : ""}`}
+              message={e.message}
+              suggestion={e.explanation}
+              href={e.fixRoute}
+            />
+          ))}
+          {(gate.result?.warnings || []).map((w, i) => (
+            <ValidationIssue
+              key={`${w.field || "warn"}-${i}`}
+              severity="WARNING"
+              title={`WARNING${w.section ? ` · ${w.section}` : ""}`}
+              message={w.message}
+            />
           ))}
         </div>
       </div>

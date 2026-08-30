@@ -15,8 +15,17 @@ export type GeneratedItr = {
   calc: TaxComputation;
   schemaVersion: string;
   valid: boolean;
-  errors: Array<{ severity: string; message: string; field?: string; path?: string; explanation?: string; fixRoute?: string }>;
-  warnings: Array<{ severity: string; message: string; field?: string }>;
+  errors: Array<{
+    severity: string;
+    message: string;
+    field?: string;
+    path?: string;
+    explanation?: string;
+    fixRoute?: string;
+    code?: string;
+    section?: string;
+  }>;
+  warnings: Array<{ severity: string; message: string; field?: string; code?: string; section?: string }>;
   official: ReturnType<typeof evaluateFilingGate>["official"];
   blocked: boolean;
   layers: ReturnType<typeof evaluateFilingGate>["layers"];
@@ -33,30 +42,60 @@ export function generateITRJson(
   if (openDocumentConflicts > 0) {
     errors.push({
       severity: "ERROR",
+      code: "DOCUMENT_CONFLICT_OPEN",
       message: "Unresolved document conflicts must be resolved before JSON generation.",
       field: "DOCUMENT_CONFLICT_OPEN",
+      section: "Conflicts",
     });
   }
   if (!gate.integrity.ok) {
     errors.push({
       severity: "ERROR",
+      code: "OFFICIAL_SCHEMA_INTEGRITY_FAILURE",
       message: "The official AY 2026–27 ITR-4 schema could not be verified. JSON generation has been disabled.",
       field: "OFFICIAL_SCHEMA_INTEGRITY_FAILURE",
+      section: "Schema",
     });
   }
   for (const c of gate.completeness) {
-    errors.push({ severity: c.severity, message: c.message, field: c.field, explanation: c.explanation, fixRoute: c.fixRoute });
+    errors.push({
+      severity: c.severity,
+      code: c.code || c.id,
+      message: c.message,
+      field: c.field,
+      section: c.section,
+      explanation: c.explanation,
+      fixRoute: c.fixRoute,
+    });
   }
   for (const u of gate.unsupported) {
-    errors.push({ severity: u.severity, message: u.message, field: u.code, fixRoute: u.fixRoute });
+    errors.push({ severity: u.severity, code: u.code, message: u.message, field: u.code, fixRoute: u.fixRoute, section: "Unsupported scenario" });
   }
   for (const b of gate.business.filter((x) => x.severity === "ERROR")) {
-    errors.push({ severity: b.severity, message: b.message, field: b.field, explanation: b.explanation, fixRoute: b.fixRoute });
+    errors.push({
+      severity: b.severity,
+      code: b.code || b.id,
+      message: b.message,
+      field: b.field,
+      section: b.section,
+      explanation: b.explanation,
+      fixRoute: b.fixRoute,
+    });
   }
   for (const e of gate.official.errors) {
-    errors.push({ severity: "ERROR", message: e.explanation, field: e.field, path: e.path, explanation: e.message });
+    errors.push({
+      severity: "ERROR",
+      code: "OFFICIAL_SCHEMA_VALIDATION_FAILURE",
+      message: e.explanation,
+      field: e.field,
+      path: e.path,
+      explanation: e.message,
+      section: "Official JSON schema",
+    });
   }
-  const warnings = gate.business.filter((b) => b.severity !== "ERROR").map((b) => ({ severity: b.severity, message: b.message, field: b.field }));
+  const warnings = gate.business
+    .filter((b) => b.severity !== "ERROR")
+    .map((b) => ({ severity: b.severity, message: b.message, field: b.field, code: b.code || b.id, section: b.section }));
   const digest = gate.json ? createHash("sha256").update(JSON.stringify(gate.json)).digest("hex") : "";
   return {
     json: gate.ready ? gate.json : null,

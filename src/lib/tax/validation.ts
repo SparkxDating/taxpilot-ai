@@ -14,11 +14,13 @@ export type Issue = {
   suggestion: string;
   href: string;
   id?: string;
+  code?: string;
 };
 
 function toIssue(b: BusinessIssue): Issue {
   return {
     id: b.id,
+    code: b.code,
     level: b.severity === "ERROR" ? 2 : 1,
     severity: b.severity,
     section: b.section,
@@ -34,6 +36,7 @@ export function validateReturn(data: NormalizedReturn, returnId?: string) {
   const business = businessValidate(data, returnId).map(toIssue);
   const unsupported = detectUnsupported(data, returnId).map((u) => ({
     id: u.code,
+    code: u.code,
     level: 2 as const,
     severity: u.severity,
     section: "Unsupported scenario",

@@ -13,6 +13,7 @@ export function completenessValidate(data: NormalizedReturn, returnId = "new"): 
   const err = (field: string, message: string, explanation: string, route = "profile") => {
     issues.push({
       id: `ITR4_REQ_${field.toUpperCase()}`,
+      code: "REQUIRED_FIELD_MISSING",
       severity: "ERROR",
       field,
       section: route === "tds" ? "Bank details" : route === "income" ? "Income" : "Personal information",
