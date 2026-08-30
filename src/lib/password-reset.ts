@@ -20,6 +20,8 @@ export type ResetTokenRow = {
   usedAt: Date | null;
 };
 
+export type ResetEmailPayload = { to: string; subject: string; text: string };
+
 export type PasswordResetStore = {
   findUserByEmail: (email: string) => Promise<{ id: string } | null>;
   createToken: (data: { userId: string; tokenHash: string; expiresAt: Date }) => Promise<void>;
@@ -27,6 +29,8 @@ export type PasswordResetStore = {
   consumeToken: (id: string) => Promise<boolean>;
   updatePassword: (userId: string, passwordHash: string) => Promise<void>;
   hashPassword: (password: string) => Promise<string>;
+  deliverResetEmail: (payload: ResetEmailPayload) => Promise<void>;
+  commitReset: (data: { tokenId: string; userId: string; passwordHash: string }) => Promise<boolean>;
 };
 
 export function hashResetToken(token: string) {
@@ -86,6 +90,38 @@ export function publicOrigin(requestOrigin?: string) {
   return "http://127.0.0.1:3002";
 }
 
+export function isResetEmailConfigured() {
+  const apiKey = process.env.RESEND_API_KEY?.trim();
+  const from = process.env.RESET_EMAIL_FROM?.trim() || process.env.EMAIL_FROM?.trim();
+  return Boolean(apiKey && from);
+}
+
+export async function sendConfiguredResetEmail(payload: ResetEmailPayload) {
+  const apiKey = process.env.RESEND_API_KEY?.trim();
+  const from = process.env.RESET_EMAIL_FROM?.trim() || process.env.EMAIL_FROM?.trim();
+  if (!apiKey || !from) {
+    console.info("[password-reset] email provider is not configured");
+    return;
+  }
+  const res = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      from,
+      to: [payload.to],
+      subject: payload.subject,
+      text: payload.text,
+    }),
+  });
+  if (!res.ok) {
+    console.error("[password-reset] email delivery failed", res.status);
+    throw new Error("email delivery failed");
+  }
+}
+
 function allowRequest(email: string, ip?: string) {
   const now = Date.now();
   const keys = [`email:${email}`];
@@ -133,7 +169,8 @@ export async function requestPasswordResetWith(
   const origin = publicOrigin(opts?.origin);
   if (origin) {
     const resetUrl = `${origin}/reset-password?token=${token}`;
-    void composeResetEmail(resetUrl);
+    const composed = composeResetEmail(resetUrl);
+    await store.deliverResetEmail({ to: normalized, ...composed });
     if (!isProduction()) {
       devResetUrls.set(normalized, resetUrl);
     }
@@ -160,34 +197,44 @@ export async function completePasswordResetWith(
     return { ok: false, error: INVALID_TOKEN_MESSAGE };
   }
 
-  const consumed = await store.consumeToken(row.id);
-  if (!consumed) return { ok: false, error: INVALID_TOKEN_MESSAGE };
-
-  const hashedPassword = await store.hashPassword(input.newPassword);
-  await store.updatePassword(row.userId, hashedPassword);
-  return { ok: true };
+  try {
+    const hashedPassword = await store.hashPassword(input.newPassword);
+    const committed = await store.commitReset({
+      tokenId: row.id,
+      userId: row.userId,
+      passwordHash: hashedPassword,
+    });
+    if (!committed) return { ok: false, error: INVALID_TOKEN_MESSAGE };
+    return { ok: true };
+  } catch {
+    return { ok: false, error: INVALID_TOKEN_MESSAGE };
+  }
 }
 
-export function prismaPasswordResetStore(deps: {
-  // PrismaClient is structurally wider than this store; keep the adapter dependency-free.
-  prisma: {
-    user: {
-      findUnique: (args: { where: { email: string } }) => Promise<{ id: string } | null>;
-      update: (args: { where: { id: string }; data: { passwordHash: string } }) => Promise<unknown>;
-    };
-    passwordResetToken: {
-      create: (args: { data: { userId: string; token: string; expiresAt: Date } }) => Promise<unknown>;
-      findUnique: (args: { where: { token: string } }) => Promise<ResetTokenRow | null>;
-      updateMany: (args: {
-        where: { id: string; usedAt: Date | null };
-        data: { usedAt: Date };
-      }) => Promise<{ count: number }>;
-    };
+type PrismaResetClient = {
+  $transaction: <T>(fn: (tx: PrismaResetClient) => Promise<T>) => Promise<T>;
+  user: {
+    findUnique: (args: { where: { email: string } }) => Promise<{ id: string } | null>;
+    update: (args: { where: { id: string }; data: { passwordHash: string } }) => Promise<unknown>;
   };
+  passwordResetToken: {
+    create: (args: { data: { userId: string; token: string; expiresAt: Date } }) => Promise<unknown>;
+    findUnique: (args: { where: { token: string } }) => Promise<ResetTokenRow | null>;
+    updateMany: (args: {
+      where: { id: string; usedAt: Date | null };
+      data: { usedAt: Date };
+    }) => Promise<{ count: number }>;
+  };
+};
+
+export function prismaPasswordResetStore(deps: {
+  prisma: PrismaResetClient;
   hashPassword: (password: string) => Promise<string>;
+  deliverResetEmail?: (payload: ResetEmailPayload) => Promise<void>;
 }): PasswordResetStore {
   const { prisma, hashPassword } = deps;
-  return {
+  const deliverResetEmail = deps.deliverResetEmail ?? sendConfiguredResetEmail;
+  const store: PasswordResetStore = {
     findUserByEmail: (email) => prisma.user.findUnique({ where: { email } }),
     createToken: async ({ userId, tokenHash, expiresAt }) => {
       await prisma.passwordResetToken.create({ data: { userId, token: tokenHash, expiresAt } });
@@ -204,5 +251,22 @@ export function prismaPasswordResetStore(deps: {
       await prisma.user.update({ where: { id: userId }, data: { passwordHash } });
     },
     hashPassword,
+    deliverResetEmail,
+    commitReset: async ({ tokenId, userId, passwordHash }) => {
+      try {
+        await prisma.$transaction(async (tx) => {
+          await tx.user.update({ where: { id: userId }, data: { passwordHash } });
+          const result = await tx.passwordResetToken.updateMany({
+            where: { id: tokenId, usedAt: null },
+            data: { usedAt: new Date() },
+          });
+          if (result.count !== 1) throw new Error("token-not-consumed");
+        });
+        return true;
+      } catch {
+        return false;
+      }
+    },
   };
+  return store;
 }
