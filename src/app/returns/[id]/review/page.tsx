@@ -3,14 +3,59 @@ import { prisma } from "@/lib/db";
 import { notFound, redirect } from "next/navigation";
 import { SiteHeader } from "@/components/site-header";
 import { ReturnNav } from "@/components/return-nav";
-import { Badge, Card } from "@/components/ui";
+import { Badge, Button, Card, Input } from "@/components/ui";
 import { ValidationIssue } from "@/components/validation-issue";
 import { json, inr, maskAccount, maskPan } from "@/lib/utils";
 import type { TaxComputation } from "@/lib/tax/engine";
 import Link from "next/link";
-import { overviewFromRecords, parsePreparation } from "@/lib/documents/prefill";
+import { overviewFromRecords, parsePreparation, type PrefillEntry } from "@/lib/documents/prefill";
 import { PrepareSummary } from "@/components/prepare-summary";
-import { reconcileTds } from "@/lib/documents/tdsReconcile";
+import { generateJsonAction, resolveConflictAction } from "@/app/actions";
+import { canGenerateItrJson } from "@/lib/itr-json/mapper";
+import { reviewReadiness } from "@/lib/review/readiness";
+
+type ConflictFact = { id: string; documentType: string; value: string; numericValue: number | null };
+
+function prettySource(raw: string) {
+  if (raw === "FORM_16") return "Form 16";
+  if (raw === "BANK_STATEMENT") return "Bank statement";
+  if (raw === "USER_INPUT" || raw === "USER_EDITED") return "Manual entry";
+  return raw.replaceAll("_", " ");
+}
+
+function displayValue(value: string) {
+  if (/^-?\d+$/.test(value.trim())) return inr(Number(value));
+  return value;
+}
+
+function Provenance({ field, entry }: { field: string; entry: PrefillEntry }) {
+  const label = prettySource(entry.sourceDocumentType || entry.source);
+  const page = entry.sourcePage ? ` · Page ${entry.sourcePage}` : "";
+  const verified = entry.verificationStatus === "VERIFIED" || entry.origin === "IMPORTED" || entry.origin === "USER_EDITED";
+  if (entry.origin === "USER_EDITED") {
+    return (
+      <li className="sans text-sm">
+        {field}: Current {displayValue(entry.currentValue)} · Imported {displayValue(entry.originalValue)} · Source {label}
+        {page}
+        {verified ? " · Verified" : ""}
+      </li>
+    );
+  }
+  if (entry.origin === "IMPORTED") {
+    return (
+      <li className="sans text-sm">
+        {field}: {displayValue(entry.currentValue)} · {label}
+        {page}
+        {verified ? " · Verified" : ""}
+      </li>
+    );
+  }
+  return (
+    <li className="sans text-sm">
+      {field}: {displayValue(entry.currentValue)} · Source: Manual entry
+    </li>
+  );
+}
 
 export default async function ReviewPage({ params }: { params: Promise<{ id: string }> }) {
   const session = await getSession();
@@ -34,16 +79,18 @@ export default async function ReviewPage({ params }: { params: Promise<{ id: str
       documents: true,
       taxFacts: true,
       documentConflicts: true,
+      jsonFiles: { where: { status: "CURRENT" }, take: 1 },
     },
   });
   if (!ret) notFound();
   const calc = json<TaxComputation>(ret.calculationJson, {} as TaxComputation);
   const prep = parsePreparation(ret.preparationJson);
   const sources = json<string[]>(ret.incomeSourcesJson, []);
+  const openConflicts = ret.documentConflicts.filter((c) => c.status === "OPEN");
   const overview = overviewFromRecords(id, {
     documents: ret.documents,
     facts: ret.taxFacts,
-    openConflicts: ret.documentConflicts.filter((c) => c.status === "OPEN"),
+    openConflicts,
     prep,
     hasPan: Boolean(ret.user.profile?.pan),
     salarySources: sources.some((x) => x.includes("SALARY")),
@@ -53,100 +100,207 @@ export default async function ReviewPage({ params }: { params: Promise<{ id: str
     hasBank: ret.bankAccounts.length > 0,
     validationErrors: ret.validationErrors.filter((e) => e.severity === "ERROR").length,
   });
-  const form16Tds = ret.taxFacts.find((f) => f.normalizedTaxField === "salary.tds" && f.status === "VERIFIED")?.numericValue ?? null;
-  const aisTds = ret.taxFacts.find((f) => f.normalizedTaxField === "tds.ais" && f.status === "VERIFIED")?.numericValue ?? null;
-  const tdsStatus = form16Tds != null || aisTds != null ? reconcileTds(form16Tds, aisTds) : null;
-  const openConflicts = ret.documentConflicts.filter((c) => c.status === "OPEN");
-  const err = (section: string) => ret.validationErrors.filter((e) => e.section === section);
-  const mark = (section: string) => {
-    const rows = err(section);
-    if (rows.some((r) => r.severity === "ERROR")) return { tone: "err" as const, label: "✕ Error" };
-    if (rows.some((r) => r.severity === "WARNING")) return { tone: "warn" as const, label: "⚠ Review" };
-    return { tone: "ok" as const, label: "✓ Complete" };
-  };
-  const sections = [
-    ["Personal information", `/returns/${id}/profile`, `PAN ${maskPan(ret.user.profile?.pan || "")}`],
-    ["Income", `/returns/${id}/income`, `Salary ${inr(calc.salaryIncome || 0)}`],
-    ["Business/Profession", `/returns/${id}/income`, `BP ${inr((calc.businessIncome || 0) + (calc.professionIncome || 0))}`],
-    ["House property", `/returns/${id}/income`, inr(calc.housePropertyIncome || 0)],
-    ["Capital gains", `/returns/${id}/income`, inr(calc.capitalGains || 0)],
-    ["Other sources", `/returns/${id}/income`, inr(calc.otherSources || 0)],
-    ["Deductions", `/returns/${id}/deductions`, inr(calc.deductions || 0)],
-    ["TDS", `/returns/${id}/tds`, inr(calc.tds || 0)],
-    ["Tax payments", `/returns/${id}/tds`, inr((calc.advanceTax || 0) + (calc.selfAssessmentTax || 0))],
-    ["Bank details", `/returns/${id}/tds`, ret.bankAccounts[0] ? maskAccount(ret.bankAccounts[0].accountNumber) : "Missing"],
-    ["Tax calculation", `/returns/${id}/summary`, `Tax ${inr(calc.totalTax || 0)}`],
-    ["Validation", `/returns/${id}/validate`, `${ret.validationErrors.filter((e) => e.severity === "ERROR").length} errors`],
-  ] as const;
+  const gate = await canGenerateItrJson(id, { ownerUserId: session.userId });
+  const readiness = reviewReadiness(gate, { returnId: id, openConflicts: openConflicts.length });
+  const ready = readiness.status === "READY" && gate.allowed;
+  const profile = ret.user.profile;
+  const deductionLines = (calc.deductionLines || []).filter((d) => d.amount || d.eligibleAmount);
+  const checklistTone = (s: string) => (s === "COMPLETE" ? "ok" : s === "BLOCKED" ? "err" : "warn") as "ok" | "err" | "warn";
   return (
     <div>
       <SiteHeader authed name={session.name} />
       <div className="mx-auto max-w-3xl px-6 py-8">
         <ReturnNav id={id} current="review" />
-        <h1 className="text-3xl">Return review</h1>
+        <h1 className="text-3xl">Final review</h1>
+        <p className="sans mt-2 text-sm text-[#5c6773]">
+          This page summarises the return. JSON generation stays blocked unless the filing gate allows it.
+        </p>
+
+        <Card className="mt-6 flex items-center justify-between gap-3">
+          <div>
+            <p className="font-medium">Readiness</p>
+            <p className="sans mt-1 text-sm text-[#5c6773]">
+              {ready ? "The existing filing gate allows ITR-4 JSON generation." : "Action required before JSON can be generated."}
+            </p>
+          </div>
+          <Badge tone={ready ? "ok" : "err"}>{ready ? "READY" : "NOT READY"}</Badge>
+        </Card>
+
+        <Card className="mt-4">
+          <p className="font-medium">Personal / return information</p>
+          <ul className="sans mt-2 space-y-1 text-sm">
+            <li>Name {ret.user.name}</li>
+            <li>PAN {maskPan(profile?.pan || "")}</li>
+            <li>Assessment year {ret.assessmentYear}</li>
+            <li>ITR type {ret.itrType} · Regime {ret.taxRegime === "OLD" ? "Old" : "New"}</li>
+            <li>Residential status {profile?.residentialStatus || "Not set"}</li>
+          </ul>
+        </Card>
+
+        <Card className="mt-4">
+          <p className="font-medium">Income</p>
+          <ul className="sans mt-2 space-y-1 text-sm">
+            <li>Salary {inr(calc.salaryIncome || 0)}</li>
+            <li>Business {inr(calc.businessIncome || 0)}</li>
+            <li>Profession {inr(calc.professionIncome || 0)}</li>
+            <li>House property {inr(calc.housePropertyIncome || 0)}</li>
+            <li>Capital gains {inr(calc.capitalGains || 0)}</li>
+            <li>Other sources {inr(calc.otherSources || 0)}</li>
+            <li>Gross income {inr(calc.grossTotalIncomeIncLtcg || calc.grossTotalIncome || 0)}</li>
+            <li>Total income {inr(calc.grossTotalIncome || 0)}</li>
+            <li>Taxable income {inr(calc.taxableIncome || 0)}</li>
+          </ul>
+        </Card>
+
+        <Card className="mt-4">
+          <p className="font-medium">Deductions</p>
+          <p className="sans mt-2 text-sm">Total deductions {inr(calc.deductions || 0)}</p>
+          {deductionLines.length ? (
+            <ul className="sans mt-2 space-y-1 text-sm">
+              {deductionLines.map((d) => (
+                <li key={d.section}>
+                  {d.section} {inr(d.eligibleAmount || d.amount || 0)}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </Card>
+
+        <Card className="mt-4">
+          <p className="font-medium">TDS / tax payments</p>
+          <ul className="sans mt-2 space-y-1 text-sm">
+            <li>TDS {inr(calc.tds || 0)}</li>
+            <li>Advance tax {inr(calc.advanceTax || 0)}</li>
+            <li>Self-assessment {inr(calc.selfAssessmentTax || 0)}</li>
+            <li>Bank {ret.bankAccounts[0] ? maskAccount(ret.bankAccounts[0].accountNumber) : "Missing"}</li>
+          </ul>
+        </Card>
+
+        <Card className="mt-4">
+          <p className="font-medium">Tax calculation</p>
+          <ul className="sans mt-2 space-y-1 text-sm">
+            <li>Tax liability {inr(calc.totalTax || 0)}</li>
+            <li>TDS {inr(calc.tds || 0)}</li>
+            <li>Tax already paid {inr(calc.prepaid || 0)}</li>
+            <li>
+              {(calc.refundOrPayable || 0) >= 0 ? "Refund" : "Balance payable"} {inr(Math.abs(calc.refundOrPayable || 0))}
+            </li>
+          </ul>
+        </Card>
+
         <div className="mt-4">
           <PrepareSummary {...overview.summary} sections={overview.sections} />
         </div>
-        {openConflicts.length ? (
-          <Card className="mt-4">
-            <p className="font-medium">Open conflicts</p>
-            <p className="sans text-sm text-[#5c6773]">{openConflicts.length} unresolved. JSON generation stays blocked until resolved.</p>
-          </Card>
-        ) : null}
-        {tdsStatus && tdsStatus !== "MATCHED" ? (
-          <Card className="mt-4">
-            <p className="font-medium">TDS reconciliation: {tdsStatus}</p>
-            <p className="sans text-sm">Form 16 TDS {form16Tds ?? "—"} · AIS TDS {aisTds ?? "—"} · Salary TDS {ret.salary[0]?.tds ?? "—"}</p>
-          </Card>
-        ) : null}
-        {Object.keys(prep.fields).length ? (
-          <Card className="mt-4 space-y-2">
-            <p className="font-medium">Imported values</p>
-            {Object.entries(prep.fields).map(([field, entry]) => (
-              <p key={field} className="sans text-sm">
-                {field} · {entry.currentValue} · {entry.source.replaceAll("_", " ")}
-                {entry.sourcePage ? ` · Page ${entry.sourcePage}` : ""} · {entry.origin}
-              </p>
-            ))}
-          </Card>
-        ) : null}
-        <p className="sans mt-2 text-sm text-[#5c6773]">
-          Selected regime: {ret.taxRegime === "OLD" ? "Old regime" : "New regime"} · Taxable income {inr(calc.taxableIncome || 0)} · Eligible
-          deductions {inr(calc.deductions || 0)} · Final tax {inr(calc.totalTax || 0)}
-        </p>
-        <Card className="mt-4 sans text-sm space-y-1">
-          <p>Normal-rate taxable income: {inr(calc.normalRateIncome || 0)}</p>
-          <p>Special-rate taxable income (s.112A): {inr(calc.specialRateIncome || 0)}</p>
-          <p>Tax on normal-rate income: {inr(calc.taxBeforeRebate || 0)}</p>
-          <p>Tax on special-rate income: {inr(calc.taxOnSpecialRate || 0)}</p>
-          <p>Rebate u/s 87A: {inr(calc.rebate || 0)}</p>
-          <p>Surcharge: {inr(calc.surcharge || 0)}</p>
-          <p>Cess: {inr(calc.cess || 0)}</p>
-          <p>Interest 234A / 234B / 234C: {inr(calc.interest234A || 0)} / {inr(calc.interest234B || 0)} / {inr(calc.interest234C || 0)}</p>
-          <p>Late fee 234F: {inr(calc.fee234F || 0)}</p>
-          <p>Total tax: {inr(calc.totalTax || 0)}</p>
-          <p>Total liability (tax + interest + fee): {inr(calc.totalLiability || calc.totalTax || 0)}</p>
-          <p>
-            Settlement: {calc.settlement?.status || (calc.isRefund ? "REFUND" : calc.totalTax ? "TAX_PAYABLE" : "ZERO")}{" "}
-            {inr(calc.settlement?.amount ?? Math.abs(calc.refundOrPayable || 0))}
-          </p>
+
+        <Card className="mt-4">
+          <p className="font-medium">Conflicts</p>
+          {openConflicts.length ? (
+            <div className="mt-3 space-y-4">
+              {openConflicts.map((c) => {
+                let facts: ConflictFact[] = [];
+                try {
+                  facts = JSON.parse(c.factsJson || "[]") as ConflictFact[];
+                } catch {
+                  facts = [];
+                }
+                return (
+                  <div key={c.id} className="space-y-2">
+                    <p className="sans text-sm font-medium">
+                      {c.field.replaceAll("_", " ")} mismatch · Status: UNRESOLVED
+                    </p>
+                    {facts.map((f) => (
+                      <form key={f.id} action={resolveConflictAction} className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="sans text-sm">
+                          {prettySource(f.documentType)}: {f.numericValue != null ? inr(f.numericValue) : f.value}
+                        </p>
+                        <input type="hidden" name="conflictId" value={c.id} />
+                        <input type="hidden" name="resolution" value="USE_SOURCE" />
+                        <input type="hidden" name="factId" value={f.id} />
+                        <Button type="submit" variant="outline">
+                          Use {prettySource(f.documentType)}
+                        </Button>
+                      </form>
+                    ))}
+                    <form action={resolveConflictAction} className="flex flex-wrap gap-2">
+                      <input type="hidden" name="conflictId" value={c.id} />
+                      <input type="hidden" name="resolution" value="MANUAL_VALUE" />
+                      <Input name="value" placeholder="Enter value" />
+                      <Button type="submit">Enter Value</Button>
+                    </form>
+                    <Link href={`/returns/${id}/documents`} className="sans text-xs text-[#1f4e46] underline">
+                      Open documents
+                    </Link>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="sans mt-2 text-sm text-[#5c6773]">No open conflicts.</p>
+          )}
         </Card>
-        <div className="mt-6 space-y-2">
-          {sections.map(([label, href, detail]) => {
-            const m = mark(label);
-            return (
-              <Card key={label} className="flex items-center justify-between gap-3">
-                <div>
-                  <Link href={href} className="font-medium">
-                    {label}
+
+        {Object.keys(prep.fields).length ? (
+          <Card className="mt-4">
+            <p className="font-medium">Imported and user-edited values</p>
+            <ul className="mt-2 space-y-1">
+              {Object.entries(prep.fields).map(([field, entry]) => (
+                <Provenance key={field} field={field} entry={entry} />
+              ))}
+            </ul>
+          </Card>
+        ) : null}
+
+        <Card className="mt-4">
+          <p className="font-medium">Review checklist</p>
+          <ul className="mt-3 space-y-2">
+            {readiness.checklist.map((item) => (
+              <li key={item.label} className="flex items-center justify-between gap-3">
+                {item.href ? (
+                  <Link href={item.href} className="sans text-sm">
+                    {item.label}
                   </Link>
-                  <p className="sans text-xs text-[#5c6773]">{detail}</p>
-                </div>
-                <Badge tone={m.tone}>{m.label}</Badge>
-              </Card>
-            );
-          })}
-        </div>
+                ) : (
+                  <span className="sans text-sm">{item.label}</span>
+                )}
+                <Badge tone={checklistTone(item.status)}>{item.status}</Badge>
+              </li>
+            ))}
+          </ul>
+        </Card>
+
+        {ready ? (
+          <Card className="mt-4">
+            <p className="font-medium">✓ Return ready for ITR-4 JSON generation</p>
+            <form action={generateJsonAction} className="mt-4">
+              <input type="hidden" name="returnId" value={id} />
+              <Button type="submit">Generate ITR JSON</Button>
+            </form>
+            {ret.jsonFiles[0]?.valid ? (
+              <p className="sans mt-3 text-sm text-emerald-800">JSON generated successfully · Schema validation passed</p>
+            ) : null}
+            <Link href={`/returns/${id}/json`} className="sans mt-3 inline-block text-sm text-[#1f4e46] underline">
+              Open JSON page
+            </Link>
+          </Card>
+        ) : (
+          <Card className="mt-4">
+            <p className="font-medium">Action required</p>
+            <ul className="mt-3 space-y-2">
+              {readiness.reasons.map((r) => (
+                <li key={`${r.title}-${r.detail}`}>
+                  <p className="sans text-sm font-medium">{r.title}</p>
+                  <p className="sans text-sm text-[#5c6773]">{r.detail}</p>
+                  {r.href ? (
+                    <Link href={r.href} className="sans text-xs text-[#1f4e46] underline">
+                      Fix this
+                    </Link>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          </Card>
+        )}
+
         <div className="mt-6 space-y-3">
           {ret.validationErrors.map((e) => (
             <ValidationIssue key={e.id} severity={e.severity as "ERROR" | "WARNING" | "INFO"} title={e.section} message={e.message} suggestion={e.suggestion} href={e.href} />

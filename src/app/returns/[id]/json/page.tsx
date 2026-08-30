@@ -5,8 +5,7 @@ import { SiteHeader } from "@/components/site-header";
 import { ReturnNav } from "@/components/return-nav";
 import { Button, Card, Disclaimer } from "@/components/ui";
 import { generateJsonAction } from "@/app/actions";
-import { loadNormalized } from "@/lib/tax/load";
-import { generateITRJson } from "@/lib/itr-json/mapper";
+import { canGenerateItrJson } from "@/lib/itr-json/mapper";
 import Link from "next/link";
 
 export default async function JsonPage({ params }: { params: Promise<{ id: string }> }) {
@@ -18,24 +17,18 @@ export default async function JsonPage({ params }: { params: Promise<{ id: strin
     include: { jsonFiles: { orderBy: { generatedAt: "desc" }, take: 3 }, validationErrors: true },
   });
   if (!ret) notFound();
-  const data = await loadNormalized(id, session.userId);
-  const preview = data ? generateITRJson(data, { returnId: id }) : null;
+  const gate = await canGenerateItrJson(id, { ownerUserId: session.userId });
+  const preview = gate.result;
   const current = ret.jsonFiles.find((f) => f.status === "CURRENT");
-  const errors = ret.validationErrors.filter((e) => e.severity === "ERROR");
   const integrityFail = preview?.layers.schemaIntegrity === "FAIL";
-  const canGen =
-    ret.itrType === "ITR-4" &&
-    errors.length === 0 &&
-    preview?.official.valid &&
-    preview.valid &&
-    !integrityFail;
+  const canGen = gate.allowed;
   return (
     <div>
       <SiteHeader authed name={session.name} />
       <div className="mx-auto max-w-3xl px-6 py-8">
         <ReturnNav id={id} current="json" />
         <h1 className="text-3xl">ITR JSON</h1>
-        {ret.itrType !== "ITR-4" ? (
+        {ret.itrType !== "ITR-4" || gate.error === "itr3" ? (
           <Card className="mt-6">ITR-3 preparation is currently in development. Filing JSON generation is not available yet.</Card>
         ) : (
           <>
@@ -55,7 +48,7 @@ export default async function JsonPage({ params }: { params: Promise<{ id: strin
                     ? "✓ Official schema validation passed"
                     : "✕ Official schema validation failed"}
               </p>
-              <p>{errors.length === 0 ? "✓ Business validation passed" : "✕ Business validation failed"}</p>
+              <p>{preview?.layers.businessRules === "PASS" ? "✓ Business validation passed" : "✕ Business validation failed"}</p>
               <p>{preview?.calc ? "✓ Tax calculation validation passed" : "✕ Tax calculation missing"}</p>
             </div>
             {!canGen ? (
@@ -65,7 +58,7 @@ export default async function JsonPage({ params }: { params: Promise<{ id: strin
                 {preview?.errors.some((e) => e.field === "UNSUPPORTED_INTEREST_CALCULATION") ? (
                   <p className="sans mt-2 text-sm">Interest calculation requires additional information.</p>
                 ) : null}
-                <Link href={`/returns/${id}/validate`} className="sans mt-2 inline-block text-sm text-[#1f4e46]">
+                <Link href={`/returns/${id}/review`} className="sans mt-2 inline-block text-sm text-[#1f4e46]">
                   Review
                 </Link>
               </Card>
@@ -75,6 +68,9 @@ export default async function JsonPage({ params }: { params: Promise<{ id: strin
                 <Button type="submit">Generate ITR JSON</Button>
               </form>
             )}
+            {current?.valid ? (
+              <p className="sans mt-4 text-sm text-emerald-800">JSON generated successfully · Schema validation passed</p>
+            ) : null}
             {current?.valid ? (
               <Link href={`/api/returns/${id}/download-json`} className="mt-4 inline-block">
                 <Button variant="outline">Download ITR JSON</Button>
