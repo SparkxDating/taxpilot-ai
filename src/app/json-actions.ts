@@ -1,0 +1,56 @@
+"use server";
+
+import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
+import { prisma } from "@/lib/db";
+import { getSession, canAccessReturn } from "@/lib/auth";
+import { audit } from "@/lib/audit";
+import { canGenerateItrJson } from "@/lib/itr-json/mapper";
+import { mkdir, writeFile } from "fs/promises";
+import path from "path";
+import { getUserAccess, jsonExportUpgradePath } from "@/lib/plan";
+
+export async function generateJsonAction(formData: FormData) {
+  const session = await getSession();
+  if (!session) redirect("/login");
+  const id = String(formData.get("returnId") || "");
+  const ret = await prisma.taxReturn.findFirst({ where: { id, userId: session.userId } });
+  if (!ret || !canAccessReturn(ret.userId, session)) redirect("/dashboard");
+  const access = await getUserAccess(session.userId);
+  if (!access.isPro) redirect(jsonExportUpgradePath(id));
+  const gate = await canGenerateItrJson(id, {
+    generatedAt: new Date(),
+    ownerUserId: session.role === "ADMIN" ? undefined : session.userId,
+  });
+  if (gate.error === "empty" || !gate.data) redirect("/dashboard");
+  if (gate.error === "itr3") redirect(`/returns/${id}/summary?error=itr3`);
+  if (!gate.allowed || !gate.result?.json) {
+    await prisma.taxReturn.update({ where: { id }, data: { status: "VALIDATION_FAILED" } });
+    redirect(`/returns/${id}/validate?blocked=1`);
+  }
+  const data = gate.data;
+  const result = gate.result;
+  const payload = JSON.stringify(result.json, null, 2);
+  const dir = path.join(process.cwd(), "storage", "json", id);
+  await mkdir(dir, { recursive: true });
+  const file = path.join(dir, `ITR-4-${Date.now()}.json`);
+  await writeFile(file, payload, "utf8");
+  await prisma.iTRJsonFile.updateMany({ where: { returnId: id, status: "CURRENT" }, data: { status: "SUPERSEDED" } });
+  await prisma.iTRJsonFile.create({
+    data: {
+      returnId: id,
+      assessmentYear: data.assessmentYear,
+      itrType: "ITR-4",
+      schemaVersion: result.schemaVersion,
+      fileHash: result.digest,
+      storagePath: file,
+      valid: true,
+      status: "CURRENT",
+      versionId: result.digest.slice(0, 12),
+    },
+  });
+  await prisma.taxReturn.update({ where: { id }, data: { status: "JSON_GENERATED", schemaVersion: result.schemaVersion } });
+  await audit({ userId: session.userId, returnId: id, action: "json.generated", entity: "ITRJsonFile", metadata: { hash: result.digest } });
+  revalidatePath(`/returns/${id}/json`);
+  redirect(`/returns/${id}/json`);
+}
