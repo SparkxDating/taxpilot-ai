@@ -7,6 +7,7 @@ import { Badge, Button, Card, Input, Label } from "@/components/ui";
 import { applyVerifiedDocumentsAction, resolveConflictAction, uploadDocumentAction } from "@/app/actions";
 import { DOCUMENT_TYPES } from "@/lib/documents/types";
 import { reconcileTds } from "@/lib/documents/tdsReconcile";
+import { simpleDocumentStatus } from "@/lib/documents/prefill";
 import Link from "next/link";
 
 function avgConfidence(extractions: Array<{ confidence: number }>) {
@@ -82,6 +83,12 @@ export default async function DocsPage({
             const conf = avgConfidence(d.extractions);
             const warnings = [d.errorCode].filter((c) => c && c !== "EXTRACTION_FAILED");
             const conflictCount = d.taxFacts.filter((f) => f.status === "CONFLICT").length;
+            const status = simpleDocumentStatus({
+              status: d.status,
+              errorCode: d.errorCode,
+              factStatuses: d.taxFacts.map((f) => f.status),
+            });
+            const tone = status === "VERIFIED" ? "ok" : status === "FAILED" || status === "CONFLICT" ? "err" : "warn";
             return (
               <Card key={d.id} className="flex items-center justify-between gap-3">
                 <div>
@@ -94,8 +101,9 @@ export default async function DocsPage({
                     {warnings.length ? ` · Warnings ${warnings.join(", ")}` : ""}
                     {conflictCount ? ` · Conflicts ${conflictCount}` : ""}
                   </p>
+                  {status === "FAILED" ? <p className="sans text-xs text-red-800">Document processing failed</p> : null}
                 </div>
-                <Badge tone={d.status === "VERIFIED" ? "ok" : d.status === "FAILED" ? "err" : "warn"}>{d.status}</Badge>
+                <Badge tone={tone}>{status}</Badge>
               </Card>
             );
           })}

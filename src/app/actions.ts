@@ -581,8 +581,11 @@ export async function reviewExtractionAction(formData: FormData) {
     await prisma.document.update({ where: { id: row.documentId }, data: { status: decision === "reject" ? "NEEDS_REVIEW" : "VERIFIED" } });
   }
   if (rid) {
+    await applyVerifiedFactsToTaxModel(rid);
     revalidatePath(`/returns/${rid}/documents`);
     revalidatePath(`/returns/${rid}/documents/${row.documentId}`);
+    revalidatePath(`/returns/${rid}/income`);
+    revalidatePath(`/returns/${rid}/review`);
   }
 }
 
@@ -654,7 +657,10 @@ export async function resolveConflictAction(formData: FormData) {
     entityId: row.id,
     metadata: { resolution: applied.resolution, field: row.field },
   });
+  await applyVerifiedFactsToTaxModel(row.returnId);
   revalidatePath(`/returns/${row.returnId}/documents`);
+  revalidatePath(`/returns/${row.returnId}/income`);
+  revalidatePath(`/returns/${row.returnId}/review`);
 }
 
 export async function applyVerifiedDocumentsAction(formData: FormData) {

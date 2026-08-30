@@ -1,4 +1,4 @@
-import { canEnterTaxModel, conflictGroup } from "./mapping";
+import { canEnterTaxModel, conflictGroup, GROUP_TO_TAX_FIELD } from "./mapping";
 import { parseAmount } from "./rupees";
 
 export type PrefillOrigin = "IMPORTED" | "USER_EDITED" | "USER_INPUT";
@@ -137,6 +137,15 @@ function factAt(facts: AuthoritativeFact[], path: string) {
   return facts.find((f) => f.normalizedTaxField === path);
 }
 
+/** Reuse existing conflict-group mapping so AIS TDS/salary aliases reach the canonical field. */
+function factForPath(facts: AuthoritativeFact[], path: string) {
+  const direct = factAt(facts, path);
+  if (direct) return direct;
+  const group = conflictGroup(path);
+  if (!group || GROUP_TO_TAX_FIELD[group] !== path) return undefined;
+  return facts.find((f) => conflictGroup(f.normalizedTaxField) === group);
+}
+
 function pickNum(
   prep: PreparationState,
   path: string,
@@ -168,7 +177,7 @@ function pickStr(
 }
 
 function stampImported(next: PreparationState, facts: AuthoritativeFact[], path: string, value: string | number | null | undefined) {
-  const fact = factAt(facts, path);
+  const fact = factForPath(facts, path);
   const entry = next.fields[path];
   if (entry && !shouldOverwriteFromVerified(entry)) {
     return;
@@ -199,12 +208,12 @@ export function applyVerifiedFactsToState(input: {
   const next: PreparationState = { fields: { ...input.prep.fields } };
   const salaryExisting = input.existingSalary;
   const salary: SalaryModel = {
-    grossSalary: pickNum(next, "salary.grossSalary", factAt(facts, "salary.grossSalary")?.numericValue, salaryExisting?.grossSalary ?? 0, input.openGroups, manuals),
-    tds: pickNum(next, "salary.tds", factAt(facts, "salary.tds")?.numericValue, salaryExisting?.tds ?? 0, input.openGroups, manuals),
-    employerName: pickStr(next, "salary.employerName", factAt(facts, "salary.employerName")?.value, salaryExisting?.employerName ?? "", input.openGroups),
-    employerTan: pickStr(next, "salary.employerTan", factAt(facts, "salary.employerTan")?.value, salaryExisting?.employerTan ?? "", input.openGroups),
-    exemptions: pickNum(next, "salary.exemptions", factAt(facts, "salary.exemptions")?.numericValue, salaryExisting?.exemptions ?? 0, input.openGroups, manuals),
-    standardDeduction: pickNum(next, "salary.standardDeduction", factAt(facts, "salary.standardDeduction")?.numericValue, salaryExisting?.standardDeduction ?? 0, input.openGroups, manuals),
+    grossSalary: pickNum(next, "salary.grossSalary", factForPath(facts, "salary.grossSalary")?.numericValue, salaryExisting?.grossSalary ?? 0, input.openGroups, manuals),
+    tds: pickNum(next, "salary.tds", factForPath(facts, "salary.tds")?.numericValue, salaryExisting?.tds ?? 0, input.openGroups, manuals),
+    employerName: pickStr(next, "salary.employerName", factForPath(facts, "salary.employerName")?.value, salaryExisting?.employerName ?? "", input.openGroups),
+    employerTan: pickStr(next, "salary.employerTan", factForPath(facts, "salary.employerTan")?.value, salaryExisting?.employerTan ?? "", input.openGroups),
+    exemptions: pickNum(next, "salary.exemptions", factForPath(facts, "salary.exemptions")?.numericValue, salaryExisting?.exemptions ?? 0, input.openGroups, manuals),
+    standardDeduction: pickNum(next, "salary.standardDeduction", factForPath(facts, "salary.standardDeduction")?.numericValue, salaryExisting?.standardDeduction ?? 0, input.openGroups, manuals),
   };
   const salaryMeaningful =
     Boolean(salaryExisting) ||
@@ -222,8 +231,8 @@ export function applyVerifiedFactsToState(input: {
   stampImported(next, facts, "salary.exemptions", salary.exemptions || null);
   stampImported(next, facts, "salary.standardDeduction", salary.standardDeduction || null);
 
-  const interestAmount = pickNum(next, "income.interest", factAt(facts, "income.interest")?.numericValue, input.existingInterest?.amount ?? 0, input.openGroups, manuals);
-  const dividendAmount = pickNum(next, "income.dividend", factAt(facts, "income.dividend")?.numericValue, input.existingDividend?.amount ?? 0, input.openGroups, manuals);
+  const interestAmount = pickNum(next, "income.interest", factForPath(facts, "income.interest")?.numericValue, input.existingInterest?.amount ?? 0, input.openGroups, manuals);
+  const dividendAmount = pickNum(next, "income.dividend", factForPath(facts, "income.dividend")?.numericValue, input.existingDividend?.amount ?? 0, input.openGroups, manuals);
   stampImported(next, facts, "income.interest", interestAmount || null);
   stampImported(next, facts, "income.dividend", dividendAmount || null);
 
@@ -326,5 +335,45 @@ export function overviewFromRecords(id: string, input: {
     { label: "TDS", href: `/returns/${id}/tds`, status: sectionStatus({ openConflicts: groupOpen("TDS"), needsReviewFacts: pending("salary.tds") + pending("tds."), missingRequired: false }) },
     { label: "Review", href: `/returns/${id}/review`, status: sectionStatus({ openConflicts, needsReviewFacts: input.validationErrors, missingRequired: !input.hasBank }) },
   ];
-  return { summary: importSummary({ processedDocuments, verifiedFacts, needsReviewFacts, openConflicts, importedValues }), sections };
+  return { summary: importSummary({ processedDocuments, verifiedFacts, needsReviewFacts, openConflicts, importedValues }), sections, imports: documentSectionSummary(input.prep) };
+}
+
+export type SimpleDocStatus = "PROCESSING" | "VERIFIED" | "NEEDS REVIEW" | "CONFLICT" | "FAILED";
+
+export function simpleDocumentStatus(input: {
+  status: string;
+  errorCode?: string | null;
+  factStatuses?: string[];
+}): SimpleDocStatus {
+  if (input.status === "FAILED" || input.errorCode === "EXTRACTION_FAILED") return "FAILED";
+  if (input.status === "PROCESSING" || input.status === "UPLOADED") return "PROCESSING";
+  if (input.status === "CONFLICT" || input.factStatuses?.includes("CONFLICT")) return "CONFLICT";
+  if (input.status === "VERIFIED" || input.status === "CONFIRMED") return "VERIFIED";
+  return "NEEDS REVIEW";
+}
+
+function prettyDocSource(raw: string) {
+  if (raw === "FORM_16") return "Form 16";
+  if (raw === "BANK_STATEMENT") return "Bank statement";
+  if (raw === "USER_INPUT" || raw === "USER_EDITED") return "Manual entry";
+  return raw.replaceAll("_", " ");
+}
+
+export function documentSectionSummary(prep: PreparationState): Array<{ source: string; items: string[] }> {
+  const groups = new Map<string, string[]>();
+  const add = (raw: string | undefined, item: string) => {
+    if (!raw || raw === "USER_INPUT" || raw === "USER_EDITED") return;
+    const source = prettyDocSource(raw);
+    const items = groups.get(source) || [];
+    if (!items.includes(item)) items.push(item);
+    groups.set(source, items);
+  };
+  const imported = (entry?: PrefillEntry) => entry && (entry.origin === "IMPORTED" || entry.origin === "USER_EDITED");
+  const src = (entry?: PrefillEntry) => entry?.sourceDocumentType || entry?.source;
+  if (imported(prep.fields["salary.grossSalary"])) add(src(prep.fields["salary.grossSalary"]), "Salary imported");
+  if (imported(prep.fields["income.interest"])) add(src(prep.fields["income.interest"]), "Interest imported");
+  if (imported(prep.fields["income.dividend"])) add(src(prep.fields["income.dividend"]), "Dividend imported");
+  if (imported(prep.fields["salary.tds"])) add(src(prep.fields["salary.tds"]), "TDS imported");
+  if (imported(prep.fields["business.receipts"])) add(src(prep.fields["business.receipts"]), "Business imported");
+  return [...groups.entries()].map(([source, items]) => ({ source, items }));
 }

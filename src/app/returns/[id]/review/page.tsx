@@ -44,7 +44,7 @@ function Provenance({ field, entry }: { field: string; entry: PrefillEntry }) {
   if (entry.origin === "IMPORTED") {
     return (
       <li className="sans text-sm">
-        {field}: {displayValue(entry.currentValue)} · {label}
+        {field}: {displayValue(entry.currentValue)} · Imported automatically from verified documents · {label}
         {page}
         {verified ? " · Verified" : ""}
       </li>
@@ -189,7 +189,7 @@ export default async function ReviewPage({ params }: { params: Promise<{ id: str
         </Card>
 
         <div className="mt-4">
-          <PrepareSummary {...overview.summary} sections={overview.sections} />
+          <PrepareSummary {...overview.summary} sections={overview.sections} imports={overview.imports} />
         </div>
 
         <Card className="mt-4">

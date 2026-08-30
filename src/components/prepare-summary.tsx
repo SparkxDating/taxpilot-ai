@@ -9,6 +9,7 @@ export function PrepareSummary({
   conflicts,
   importedValues,
   sections,
+  imports,
 }: {
   documents: number;
   verifiedFacts: number;
@@ -16,6 +17,7 @@ export function PrepareSummary({
   conflicts: number;
   importedValues: number;
   sections?: Array<{ label: string; href: string; status: SectionStatus }>;
+  imports?: Array<{ source: string; items: string[] }>;
 }) {
   const tone = (s: SectionStatus) => (s === "COMPLETE" ? "ok" : s === "CONFLICT" ? "err" : "warn");
   return (
@@ -25,6 +27,23 @@ export function PrepareSummary({
         Documents {documents} processed · Verified facts {verifiedFacts} · Needs review {needsReview} · Conflicts {conflicts} ·
         Imported values {importedValues}
       </p>
+      {importedValues > 0 ? (
+        <p className="sans text-xs text-[#5c6773]">Imported automatically from verified documents</p>
+      ) : null}
+      {imports?.length ? (
+        <ul className="sans mt-1 space-y-1 text-xs text-[#5c6773]">
+          {imports.map((row) => (
+            <li key={row.source}>
+              {row.source}
+              {row.items.map((item) => (
+                <span key={item} className="block pl-3">
+                  ✓ {item}
+                </span>
+              ))}
+            </li>
+          ))}
+        </ul>
+      ) : null}
       {sections?.length ? (
         <ul className="sans mt-2 flex flex-wrap gap-2 text-xs">
           {sections.map((s) => (
@@ -68,7 +87,12 @@ export function PrefillNote({
 }) {
   if (!entry) return null;
   if (entry.origin === "IMPORTED") {
-    return <p className="sans text-xs text-[#5c6773]">Imported from {sourceLine(entry)}</p>;
+    return (
+      <div className="sans text-xs text-[#5c6773]">
+        <p>Imported automatically from verified documents</p>
+        <p>Imported from {sourceLine(entry)}</p>
+      </div>
+    );
   }
   if (entry.origin === "USER_EDITED") {
     return (

@@ -85,7 +85,7 @@ export default async function Interview({ params }: { params: Promise<{ id: stri
           Recommended form: <strong>{ret.itrType}</strong>. This decision is from published eligibility rules, not the assistant.
         </p>
         <div className="mt-4">
-          <PrepareSummary {...overview.summary} sections={overview.sections} />
+          <PrepareSummary {...overview.summary} sections={overview.sections} imports={overview.imports} />
         </div>
         {ret.itrType === "ITR-3" ? (
           <Card className="mt-4">

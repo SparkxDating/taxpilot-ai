@@ -61,7 +61,7 @@ export default async function IncomePage({ params }: { params: Promise<{ id: str
         <ReturnNav id={id} current="income" />
         <h1 className="text-3xl">Income</h1>
         <div className="mt-4">
-          <PrepareSummary {...overview.summary} sections={overview.sections} />
+          <PrepareSummary {...overview.summary} sections={overview.sections} imports={overview.imports} />
         </div>
         <form action={saveIncomeAction} className="mt-6 space-y-4">
           <input type="hidden" name="returnId" value={id} />
