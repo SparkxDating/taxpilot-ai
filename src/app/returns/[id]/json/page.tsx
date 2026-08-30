@@ -4,7 +4,7 @@ import { notFound, redirect } from "next/navigation";
 import { SiteHeader } from "@/components/site-header";
 import { ReturnNav } from "@/components/return-nav";
 import { Button, Card, Disclaimer } from "@/components/ui";
-import { generateJsonAction } from "@/app/actions";
+import { generateJsonAction } from "@/app/json-actions";
 import { canGenerateItrJson } from "@/lib/itr-json/mapper";
 import Link from "next/link";
 import { getUserAccess } from "@/lib/plan";
