@@ -107,6 +107,7 @@ export function classifyEdit(prev: PrefillEntry | undefined, nextValue: string):
       ...prev,
       currentValue: nextValue,
       origin: "USER_EDITED",
+      source: "USER_EDITED",
       originalSource: prev.originalSource || "VERIFIED_IMPORT",
       editedAt: new Date().toISOString(),
     };
@@ -121,6 +122,7 @@ export function resetToImported(entry: PrefillEntry, latestImported?: string): P
     originalValue: value,
     currentValue: value,
     origin: "IMPORTED",
+    source: entry.sourceDocumentType || (entry.source === "USER_EDITED" ? "DOCUMENT" : entry.source),
     verificationStatus: entry.verificationStatus || "VERIFIED",
     originalSource: entry.originalSource || "VERIFIED_IMPORT",
   };
@@ -169,19 +171,6 @@ function stampImported(next: PreparationState, facts: AuthoritativeFact[], path:
   const fact = factAt(facts, path);
   const entry = next.fields[path];
   if (entry && !shouldOverwriteFromVerified(entry)) {
-    if (fact && entry.origin === "USER_EDITED") {
-      next.fields[path] = {
-        ...entry,
-        originalValue: fact.value,
-        originalSource: entry.originalSource || "VERIFIED_IMPORT",
-        source: fact.documentType || entry.source,
-        sourceDocumentType: fact.documentType || entry.sourceDocumentType,
-        sourceDocumentId: fact.sourceDocumentId || entry.sourceDocumentId,
-        sourcePage: fact.sourcePage ? Number(fact.sourcePage) : entry.sourcePage,
-        sourceFactId: fact.id,
-        verificationStatus: "VERIFIED",
-      };
-    }
     return;
   }
   if (!fact || value == null || value === "") return;

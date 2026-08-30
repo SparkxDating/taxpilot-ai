@@ -127,3 +127,29 @@ describe("Phase 5.1 user-edit precedence", () => {
     expect(src).toContain("recomputeReturn");
   });
 });
+
+describe("Phase 5.2 original imported value is immutable after user edit", () => {
+  it("keeps the first Form 16 amount when a later verified source disagrees", () => {
+    const first = apply({ prep: emptyPreparation(), salary: null, facts: [form16Gross(1_250_000)] });
+    const editedPrep: PreparationState = {
+      fields: {
+        ...first.prep.fields,
+        "salary.grossSalary": classifyEdit(first.prep.fields["salary.grossSalary"], "1270000"),
+      },
+    };
+    const editedSalary: SalaryModel = { ...first.salary!, grossSalary: 1_270_000 };
+    const later = apply({
+      prep: editedPrep,
+      salary: editedSalary,
+      facts: [form16Gross(1_260_000, "fact-gross-later")],
+    });
+    const field = later.prep.fields["salary.grossSalary"];
+    expect(later.salary?.grossSalary).toBe(1_270_000);
+    expect(field.currentValue).toBe("1270000");
+    expect(field.originalValue).toBe("1250000");
+    expect(field.origin).toBe("USER_EDITED");
+    expect(field.source).toBe("USER_EDITED");
+    expect(field.originalSource).toBe("VERIFIED_IMPORT");
+    expect(field.sourceDocumentType).toBe("FORM_16");
+  });
+});
