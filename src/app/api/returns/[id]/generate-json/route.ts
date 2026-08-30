@@ -25,10 +25,15 @@ export async function POST(_: Request, { params }: { params: Promise<{ id: strin
   }
   const data = gate.data;
   const result = gate.result;
-  const dir = path.join(process.cwd(), "storage", "json", id);
-  await mkdir(dir, { recursive: true });
+  const payload = JSON.stringify(result.json, null, 2);
+  const dir = path.join(process.env.VERCEL ? "/tmp/taxpilot-storage/json" : path.join(process.cwd(), "storage", "json"), id);
   const file = path.join(dir, `ITR-4.json`);
-  await writeFile(file, JSON.stringify(result.json, null, 2), "utf8");
+  try {
+    await mkdir(dir, { recursive: true });
+    await writeFile(file, payload, "utf8");
+  } catch {
+    /* Vercel disk is ephemeral; inline DB payload is the source of truth. */
+  }
   await prisma.iTRJsonFile.updateMany({ where: { returnId: id, status: "CURRENT" }, data: { status: "SUPERSEDED" } });
   const row = await prisma.iTRJsonFile.create({
     data: {
@@ -37,7 +42,7 @@ export async function POST(_: Request, { params }: { params: Promise<{ id: strin
       itrType: "ITR-4",
       schemaVersion: result.schemaVersion,
       fileHash: result.digest,
-      storagePath: file,
+      storagePath: `inline:${payload}`,
       valid: true,
       status: "CURRENT",
       versionId: result.digest.slice(0, 12),
