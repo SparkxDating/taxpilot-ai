@@ -166,12 +166,10 @@ describe("Phase 14 commercial access", () => {
     expect(pricing).toContain("FREE");
     expect(pricing).toContain("PRO");
     expect(pricing).toContain("\u20b90");
-    expect(pricing).toContain("Coming soon");
     expect(pricing).toContain("Create ITR-4 return");
     expect(pricing).toContain("Final ITR-4 JSON");
-    expect(pricing).toContain("Checkout is not connected");
+    expect(pricing).toContain("Upgrade to Pro");
     expect(pricing).not.toMatch(/\u20b9\s*[1-9]/);
-    expect(pricing).not.toContain("Razorpay");
     expect(pricing).not.toContain("Stripe");
   });
 
