@@ -1,6 +1,6 @@
 "use server";
 
-import { redirect } from "next/navigation";
+import { redirect, unstable_rethrow } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { createSession, clearSession, getSession, hashPassword, verifyPassword, canAccessReturn } from "@/lib/auth";
@@ -26,24 +26,39 @@ function n(v: string | undefined) {
   return Number.isFinite(x) ? Math.round(x) : 0;
 }
 
+function rethrowControl(error: unknown) {
+  unstable_rethrow(error);
+  if (error && typeof error === "object" && "digest" in error && String((error as { digest?: string }).digest).startsWith("NEXT_REDIRECT")) {
+    throw error;
+  }
+}
+
 export async function signupAction(formData: FormData) {
   const email = String(formData.get("email") || "").toLowerCase().trim();
   const password = String(formData.get("password") || "");
   const name = String(formData.get("name") || "").trim();
   if (!rateLimit(`signup:${email}`, 8, 600_000).ok) redirect("/signup?error=rate");
   if (!email.includes("@") || password.length < 8 || !name) redirect("/signup?error=invalid");
-  if (await prisma.user.findUnique({ where: { email } })) redirect("/signup?error=exists");
-  const user = await prisma.user.create({
-    data: {
-      email,
-      name,
-      passwordHash: await hashPassword(password),
-      profile: { create: {} },
-      subscription: { create: { plan: "FREE" } },
-    },
-  });
-  await createSession(user.id);
-  await audit({ userId: user.id, action: "signup", entity: "User", entityId: user.id });
+  try {
+    if (await prisma.user.findUnique({ where: { email } })) redirect("/signup?error=exists");
+    const user = await prisma.user.create({
+      data: {
+        email,
+        name,
+        passwordHash: await hashPassword(password),
+      },
+    });
+    await Promise.allSettled([
+      prisma.profile.create({ data: { userId: user.id } }),
+      prisma.subscription.create({ data: { userId: user.id, plan: "FREE" } }),
+      audit({ userId: user.id, action: "signup", entity: "User", entityId: user.id }),
+    ]);
+    await createSession(user.id);
+  } catch (error) {
+    rethrowControl(error);
+    console.error("signup failed", error);
+    redirect("/signup?error=db");
+  }
   redirect("/dashboard");
 }
 
@@ -51,11 +66,21 @@ export async function loginAction(formData: FormData) {
   const email = String(formData.get("email") || "").toLowerCase().trim();
   const password = String(formData.get("password") || "");
   if (!rateLimit(`login:${email}`, 10, 600_000).ok) redirect("/login?error=rate");
-  const user = await prisma.user.findUnique({ where: { email } });
-  if (!user || !(await verifyPassword(password, user.passwordHash))) redirect("/login?error=invalid");
-  await createSession(user.id);
-  await audit({ userId: user.id, action: "login", entity: "User", entityId: user.id });
-  redirect(user.role === "ADMIN" ? "/admin" : "/dashboard");
+  let role = "USER";
+  try {
+    const user = await prisma.user.findUnique({ where: { email } });
+    if (!user || !(await verifyPassword(password, user.passwordHash))) redirect("/login?error=invalid");
+    role = user.role;
+    await createSession(user.id);
+    await audit({ userId: user.id, action: "login", entity: "User", entityId: user.id }).catch((error) => {
+      console.error("login audit failed", error);
+    });
+  } catch (error) {
+    rethrowControl(error);
+    console.error("login failed", error);
+    redirect("/login?error=db");
+  }
+  redirect(role === "ADMIN" ? "/admin" : "/dashboard");
 }
 
 export async function logoutAction() {

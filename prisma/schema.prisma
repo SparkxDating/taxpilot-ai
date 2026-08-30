@@ -3,10 +3,9 @@ generator client {
 }
 
 datasource db {
-  // Local default is SQLite. Production: set provider = "postgresql"
-  // and DATABASE_URL to a Postgres URL. Models use portable types only.
-  provider = "sqlite"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DATABASE_URL_UNPOOLED")
 }
 
 model User {
@@ -481,13 +480,13 @@ model AuditLog {
 }
 
 model Subscription {
-  id        String   @id @default(cuid())
-  userId    String   @unique
-  plan      String   @default("FREE")
-  status    String   @default("ACTIVE")
-  provider  String   @default("NONE")
+  id               String    @id @default(cuid())
+  userId           String    @unique
+  plan             String    @default("FREE")
+  status           String    @default("ACTIVE")
+  billingProvider  String    @default("NONE")
   currentPeriodEnd DateTime?
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model Payment {
