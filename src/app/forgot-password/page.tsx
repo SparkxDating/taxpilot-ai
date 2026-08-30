@@ -1,15 +1,15 @@
 import { requestPasswordResetAction } from "@/app/password-reset-actions";
 import { SiteHeader } from "@/components/site-header";
 import { Button, Card, Input, Label } from "@/components/ui";
-import { GENERIC_RESET_MESSAGE } from "@/lib/password-reset";
+import { GENERIC_RESET_MESSAGE, RESET_UNAVAILABLE_MESSAGE } from "@/lib/password-reset";
 import Link from "next/link";
 
 export default async function ForgotPassword({
   searchParams,
 }: {
-  searchParams: Promise<{ sent?: string }>;
+  searchParams: Promise<{ sent?: string; error?: string }>;
 }) {
-  const { sent } = await searchParams;
+  const { sent, error } = await searchParams;
   return (
     <div>
       <SiteHeader />
@@ -17,9 +17,11 @@ export default async function ForgotPassword({
         <Card>
           <h1 className="text-2xl">Forgot password</h1>
           <p className="sans mt-2 text-sm text-[#5c6773]">
-            Enter the email associated with your account and we'll send you a password reset link.
+            Enter the email associated with your account and we will send you a password reset link.
           </p>
-          {sent ? (
+          {error === "unavailable" ? (
+            <p className="sans mt-6 text-sm text-[#102033]">{RESET_UNAVAILABLE_MESSAGE}</p>
+          ) : sent ? (
             <p className="sans mt-6 text-sm text-[#102033]">{GENERIC_RESET_MESSAGE}</p>
           ) : (
             <form action={requestPasswordResetAction} className="mt-6 space-y-3">

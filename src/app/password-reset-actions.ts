@@ -4,7 +4,7 @@ import { redirect, unstable_rethrow } from "next/navigation";
 import { headers } from "next/headers";
 import { prisma } from "@/lib/db";
 import { clearSession, hashPassword } from "@/lib/auth";
-import { requestPasswordResetWith, completePasswordResetWith, prismaPasswordResetStore } from "@/lib/password-reset";
+import { requestPasswordResetWith, completePasswordResetWith, prismaPasswordResetStore, RESET_UNAVAILABLE_MESSAGE } from "@/lib/password-reset";
 import { rateLimit } from "@/lib/rate-limit";
 
 function rethrowControl(error: unknown) {
@@ -27,10 +27,12 @@ export async function requestPasswordResetAction(formData: FormData) {
   }
   try {
     const store = prismaPasswordResetStore({ prisma: prisma as never, hashPassword });
-    await requestPasswordResetWith(store, email, { origin: process.env.NEXT_PUBLIC_APP_URL, ip });
+    const result = await requestPasswordResetWith(store, email, { origin: process.env.NEXT_PUBLIC_APP_URL, ip });
+    if (result.message === RESET_UNAVAILABLE_MESSAGE) redirect("/forgot-password?error=unavailable");
   } catch (error) {
     rethrowControl(error);
     console.error("password reset request failed", error);
+    redirect("/forgot-password?error=unavailable");
   }
   redirect("/forgot-password?sent=1");
 }

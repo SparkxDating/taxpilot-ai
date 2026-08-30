@@ -2,6 +2,8 @@ import { createHash, randomBytes } from "node:crypto";
 
 export const GENERIC_RESET_MESSAGE =
   "If an account exists for this email, a password reset link has been sent.";
+export const RESET_UNAVAILABLE_MESSAGE =
+  "Password reset is temporarily unavailable. Please try again later.";
 export const INVALID_TOKEN_MESSAGE = "This password reset link is invalid or has expired.";
 export const SUCCESS_MESSAGE = "Your password has been reset successfully.";
 export const MIN_PASSWORD_LENGTH = 8;
@@ -90,10 +92,30 @@ export function publicOrigin(requestOrigin?: string) {
   return "http://127.0.0.1:3002";
 }
 
+export function isValidPublicOrigin(origin: string | undefined | null) {
+  if (!origin) return false;
+  try {
+    const url = new URL(origin);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return false;
+    if (!url.hostname) return false;
+    if (isProduction()) {
+      const host = url.hostname.toLowerCase();
+      if (host === "localhost" || host === "127.0.0.1" || host === "::1" || host === "[::1]") return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function isResetEmailConfigured() {
   const apiKey = process.env.RESEND_API_KEY?.trim();
   const from = process.env.RESET_EMAIL_FROM?.trim() || process.env.EMAIL_FROM?.trim();
   return Boolean(apiKey && from);
+}
+
+export function canSendProductionResetEmail(origin?: string) {
+  return isResetEmailConfigured() && isValidPublicOrigin(origin ?? publicOrigin());
 }
 
 export async function sendConfiguredResetEmail(payload: ResetEmailPayload) {
@@ -101,7 +123,7 @@ export async function sendConfiguredResetEmail(payload: ResetEmailPayload) {
   const from = process.env.RESET_EMAIL_FROM?.trim() || process.env.EMAIL_FROM?.trim();
   if (!apiKey || !from) {
     console.info("[password-reset] email provider is not configured");
-    return;
+    throw new Error("email-not-configured");
   }
   const res = await fetch("https://api.resend.com/emails", {
     method: "POST",
@@ -149,6 +171,11 @@ export async function requestPasswordResetWith(
     return { message: GENERIC_RESET_MESSAGE };
   }
 
+  const origin = publicOrigin(opts?.origin);
+  if (isProduction() && !canSendProductionResetEmail(origin)) {
+    return { message: RESET_UNAVAILABLE_MESSAGE };
+  }
+
   const user = await store.findUserByEmail(normalized);
   if (!user) {
     generateResetToken();
@@ -166,11 +193,14 @@ export async function requestPasswordResetWith(
     expiresAt: new Date(Date.now() + TOKEN_TTL_MS),
   });
 
-  const origin = publicOrigin(opts?.origin);
-  if (origin) {
+  if (isValidPublicOrigin(origin)) {
     const resetUrl = `${origin}/reset-password?token=${token}`;
     const composed = composeResetEmail(resetUrl);
-    await store.deliverResetEmail({ to: normalized, ...composed });
+    try {
+      await store.deliverResetEmail({ to: normalized, ...composed });
+    } catch {
+      console.error("[password-reset] email delivery failed");
+    }
     if (!isProduction()) {
       devResetUrls.set(normalized, resetUrl);
     }
