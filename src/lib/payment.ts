@@ -43,6 +43,7 @@ export type PaymentStore = {
   findByOrderId(orderId: string): Promise<PaymentRecord | null>;
   markPaid(id: string): Promise<PaymentRecord>;
   activatePro(userId: string): Promise<void>;
+  completePaidPro(paymentId: string, userId: string): Promise<void>;
 };
 
 export type RazorpayOrderInput = {
@@ -198,8 +199,11 @@ export async function verifyProPaymentWith(
     secret: deps.secret ?? process.env.RAZORPAY_KEY_SECRET,
   });
   if (!valid) return { ok: false, status: 400, error: PAYMENT_VERIFY_FAILED };
-  await deps.store.markPaid(payment.id);
-  await deps.store.activatePro(payment.userId);
+  try {
+    await deps.store.completePaidPro(payment.id, payment.userId);
+  } catch {
+    return { ok: false, status: 500, error: PAYMENT_VERIFY_FAILED };
+  }
   return { ok: true, alreadyPaid: false };
 }
 
@@ -232,6 +236,7 @@ export function liveRazorpay(): RazorpayOrders {
 }
 
 export function prismaPaymentStore(prisma: {
+  $transaction: (ops: unknown[]) => Promise<unknown>;
   payment: {
     create: (args: { data: Omit<PaymentRecord, "id"> }) => Promise<PaymentRecord>;
     findFirst: (args: { where: { provider: string; providerRef: string } }) => Promise<PaymentRecord | null>;
@@ -256,6 +261,16 @@ export function prismaPaymentStore(prisma: {
         create: { userId, plan: PLAN_PRO, status: "ACTIVE", billingProvider: PAYMENT_PROVIDER },
         update: { plan: PLAN_PRO, status: "ACTIVE", billingProvider: PAYMENT_PROVIDER },
       });
+    },
+    completePaidPro: async (paymentId, userId) => {
+      await prisma.$transaction([
+        prisma.payment.update({ where: { id: paymentId }, data: { status: PAYMENT_STATUS_PAID } }),
+        prisma.subscription.upsert({
+          where: { userId },
+          create: { userId, plan: PLAN_PRO, status: "ACTIVE", billingProvider: PAYMENT_PROVIDER },
+          update: { plan: PLAN_PRO, status: "ACTIVE", billingProvider: PAYMENT_PROVIDER },
+        }),
+      ]);
     },
   };
 }
