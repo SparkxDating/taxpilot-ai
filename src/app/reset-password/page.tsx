@@ -1,4 +1,4 @@
-import { completePasswordResetAction } from "@/app/actions";
+import { completePasswordResetAction } from "@/app/password-reset-actions";
 import { SiteHeader } from "@/components/site-header";
 import { Button, Card, Input, Label } from "@/components/ui";
 import { INVALID_TOKEN_MESSAGE, MIN_PASSWORD_LENGTH } from "@/lib/password-reset";

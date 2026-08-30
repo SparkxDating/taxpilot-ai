@@ -1,4 +1,4 @@
-import { requestPasswordResetAction } from "@/app/actions";
+import { requestPasswordResetAction } from "@/app/password-reset-actions";
 import { SiteHeader } from "@/components/site-header";
 import { Button, Card, Input, Label } from "@/components/ui";
 import { GENERIC_RESET_MESSAGE } from "@/lib/password-reset";
