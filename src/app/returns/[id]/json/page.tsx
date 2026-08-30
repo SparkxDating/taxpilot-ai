@@ -7,11 +7,14 @@ import { Button, Card, Disclaimer } from "@/components/ui";
 import { generateJsonAction } from "@/app/actions";
 import { canGenerateItrJson } from "@/lib/itr-json/mapper";
 import Link from "next/link";
+import { getUserAccess } from "@/lib/plan";
+import { ProUpgradeCard } from "@/components/upgrade-cta";
 
 export default async function JsonPage({ params }: { params: Promise<{ id: string }> }) {
   const session = await getSession();
   if (!session) redirect("/login");
   const { id } = await params;
+  const access = await getUserAccess(session.userId);
   const ret = await prisma.taxReturn.findFirst({
     where: { id, userId: session.userId },
     include: { jsonFiles: { orderBy: { generatedAt: "desc" }, take: 3 }, validationErrors: true },
@@ -62,16 +65,18 @@ export default async function JsonPage({ params }: { params: Promise<{ id: strin
                   Review
                 </Link>
               </Card>
-            ) : (
+            ) : access.isPro ? (
               <form action={generateJsonAction} className="mt-6">
                 <input type="hidden" name="returnId" value={id} />
                 <Button type="submit">Generate ITR JSON</Button>
               </form>
+            ) : (
+              <ProUpgradeCard />
             )}
             {current?.valid ? (
               <p className="sans mt-4 text-sm text-emerald-800">JSON generated successfully · Schema validation passed</p>
             ) : null}
-            {current?.valid ? (
+            {access.isPro && current?.valid ? (
               <Link href={`/api/returns/${id}/download-json`} className="mt-4 inline-block">
                 <Button variant="outline">Download ITR JSON</Button>
               </Link>
