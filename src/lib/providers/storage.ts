@@ -10,7 +10,9 @@ export interface StorageProvider {
   signedUrl(key: string, ttlSeconds: number): Promise<string>;
 }
 
-const root = path.join(process.cwd(), "storage", "documents");
+const root = process.env.VERCEL
+  ? path.join("/tmp", "taxpilot-storage")
+  : path.join(process.cwd(), "storage", "documents");
 
 export class LocalDiskStorage implements StorageProvider {
   name = "local-disk";

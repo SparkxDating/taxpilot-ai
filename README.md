@@ -38,12 +38,13 @@ Validated with **AJV draft-04**. The old adapter schema is in `.../development/a
 
 ## Run locally
 
-Requires Node 20+. Local development uses SQLite. Production should use PostgreSQL (`docker compose up -d` and switch `DATABASE_URL` + Prisma `provider`).
+Requires Node 20+. Local development uses PostgreSQL (`docker compose up -d`).
 
 ```bash
 cp .env.example .env
+docker compose up -d
 npm install
-npx prisma migrate dev --name init
+npx prisma migrate dev
 npm run db:seed
 npm run dev
 ```

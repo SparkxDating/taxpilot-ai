@@ -13,7 +13,7 @@ export default async function Login({ searchParams }: { searchParams: Promise<{ 
       <div className="mx-auto max-w-md px-6 py-16">
         <Card>
           <h1 className="text-2xl">Log in</h1>
-          {error ? <p className="sans mt-2 text-sm text-red-800">{error === "rate" ? "Too many attempts." : "Invalid email or password."}</p> : null}
+          {error ? <p className="sans mt-2 text-sm text-red-800">{error === "rate" ? "Too many attempts." : error === "db" ? "Server database is unavailable. Please try again." : "Invalid email or password."}</p> : null}
           <form action={loginAction} className="mt-6 space-y-3">
             <div>
               <Label>Email</Label>

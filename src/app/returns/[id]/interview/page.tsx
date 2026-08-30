@@ -5,7 +5,7 @@ import { SiteHeader } from "@/components/site-header";
 import { ReturnNav } from "@/components/return-nav";
 import { Badge, Button, Card } from "@/components/ui";
 import { answerQuestionAction } from "@/app/actions";
-import { parseOptions } from "@/lib/interview";
+import { parseOptions, seedInterview } from "@/lib/interview";
 import { getAIProvider } from "@/lib/providers/ai";
 import { json } from "@/lib/utils";
 import type { EligibilityResult } from "@/lib/tax-rules/ay2026_27/eligibility";
@@ -33,6 +33,11 @@ export default async function Interview({ params }: { params: Promise<{ id: stri
     },
   });
   if (!ret) notFound();
+  if (ret.questions.length === 0) {
+    const existingSources = json<string[]>(ret.incomeSourcesJson, []);
+    await seedInterview(id, existingSources.length ? existingSources : ["SALARY", "BUSINESS", "INTEREST"]);
+    redirect(`/returns/${id}/interview`);
+  }
   const sources = json<string[]>(ret.incomeSourcesJson, []);
   const overview = overviewFromRecords(id, {
     documents: ret.documents,
