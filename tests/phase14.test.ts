@@ -68,7 +68,7 @@ describe("Phase 14 commercial access", () => {
   });
 
   it("TEST 5: Free user cannot access JSON generate or download endpoints", () => {
-    const generate = functionBody(src("src/app/actions.ts"), "generateJsonAction");
+    const generate = functionBody(src("src/app/json-actions.ts"), "generateJsonAction");
     expect(generate.indexOf("getUserAccess")).toBeGreaterThan(-1);
     expect(generate.indexOf("getUserAccess")).toBeLessThan(generate.indexOf("canGenerateItrJson"));
     expect(generate).toContain("jsonExportUpgradePath");
@@ -118,7 +118,7 @@ describe("Phase 14 commercial access", () => {
     expect(isProUser({ plan: "CA_FIRM", status: "ACTIVE" })).toBe(true);
     expect(requireProAccess({ plan: "PRO", status: "ACTIVE" }).allowed).toBe(true);
     expect(planLabel({ plan: "PRO", status: "ACTIVE" })).toBe("Pro");
-    const generate = functionBody(src("src/app/actions.ts"), "generateJsonAction");
+    const generate = functionBody(src("src/app/json-actions.ts"), "generateJsonAction");
     expect(generate).toContain("canGenerateItrJson");
     expect(generate).toContain("writeFile");
     const jsonPage = src("src/app/returns/[id]/json/page.tsx");
@@ -133,7 +133,7 @@ describe("Phase 14 commercial access", () => {
     expect(plan).not.toContain("TaxFact");
     expect(plan).not.toContain("calculationJson");
     expect(plan).toContain("select: { plan: true, status: true }");
-    const generate = functionBody(src("src/app/actions.ts"), "generateJsonAction");
+    const generate = functionBody(src("src/app/json-actions.ts"), "generateJsonAction");
     const deny = generate.indexOf("if (!access.isPro)");
     const update = generate.indexOf("prisma.taxReturn.update");
     expect(deny).toBeGreaterThan(-1);
@@ -146,7 +146,7 @@ describe("Phase 14 commercial access", () => {
     expect(isProUser({ plan: "FREE", status: "ACTIVE", queryPlan: "PRO" } as never)).toBe(false);
     expect(isProUser({ plan: "PRO", status: "CANCELLED" })).toBe(false);
     expect(isProUser({ plan: "PRO", status: "EXPIRED" })).toBe(false);
-    const generate = functionBody(src("src/app/actions.ts"), "generateJsonAction");
+    const generate = functionBody(src("src/app/json-actions.ts"), "generateJsonAction");
     expect(generate).toContain("getUserAccess(session.userId)");
     expect(generate).not.toContain('formData.get("plan")');
     expect(generate).not.toContain("localStorage");
@@ -158,7 +158,7 @@ describe("Phase 14 commercial access", () => {
     expect(helper).toContain("export function isProUser");
     expect(helper).not.toContain("localStorage");
     expect(helper).not.toContain("searchParams");
-    expect(src("src/app/actions.ts").match(/isProUser\(/g) || []).toHaveLength(0);
+    expect(src("src/app/json-actions.ts").match(/isProUser\(/g) || []).toHaveLength(0);
   });
 
   it("pricing page is Free vs Pro with no fake price", () => {
