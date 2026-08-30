@@ -1,68 +1,88 @@
-"use client";
-
-import { useState } from "react";
-import { createReturnAction } from "@/app/actions";
+import { getSession } from "@/lib/auth";
+import { prisma } from "@/lib/db";
+import { redirect } from "next/navigation";
+import { SiteHeader } from "@/components/site-header";
 import { Button, Card } from "@/components/ui";
+import { createReturnAction } from "@/app/actions";
+import Link from "next/link";
 
-const SOURCES = ["Salary", "Business", "Profession", "Freelancing", "FNO", "Capital gains", "House property", "Interest", "Dividend", "Other income"];
+const SOURCES = [
+  ["SALARY", "Salary"],
+  ["BUSINESS", "Business"],
+  ["PROFESSION", "Profession"],
+  ["FREELANCING", "Freelancing"],
+  ["INTEREST", "Interest"],
+  ["DIVIDEND", "Dividend"],
+  ["HOUSE_PROPERTY", "House property"],
+];
 
-export default function NewReturn() {
-  const [step, setStep] = useState(0);
-  const [sources, setSources] = useState<string[]>([]);
-  const toggle = (s: string) => setSources((cur) => (cur.includes(s) ? cur.filter((x) => x !== s) : [...cur, s]));
+export default async function NewReturn() {
+  const session = await getSession();
+  if (!session) redirect("/login");
+  const existing = await prisma.taxReturn.findFirst({
+    where: { userId: session.userId },
+    orderBy: { updatedAt: "desc" },
+    select: { id: true, itrType: true, assessmentYear: true },
+  });
   return (
-    <div className="mx-auto max-w-2xl px-6 py-12">
-      <p className="sans text-xs uppercase tracking-widest text-[#c4a574]">New return · step {step + 1} of 4</p>
-      <form action={createReturnAction}>
-        <div className={step === 0 ? "block" : "hidden"}>
-          <h1 className="mt-2 text-3xl">Assessment year</h1>
-          <Card className="mt-6">
-            <label className="flex items-center gap-3">
+    <div>
+      <SiteHeader authed name={session.name} admin={session.role === "ADMIN"} />
+      <div className="mx-auto max-w-2xl px-6 py-12">
+        <h1 className="text-3xl">Start your ITR-4</h1>
+        <p className="sans mt-2 text-sm text-[#5c6773]">
+          Upload your tax documents and review the information before generating your return.
+        </p>
+        <Card className="mt-6">
+          <p className="font-medium">ITR-4</p>
+          <p className="sans mt-2 text-sm text-[#5c6773]">
+            ITR-4 is for currently supported presumptive and salary scenarios. Existing eligibility rules decide if ITR-4
+            applies after you start. ITR-3 JSON is not available yet.
+          </p>
+        </Card>
+        {existing ? (
+          <Card className="mt-4">
+            <p className="font-medium">You already have a return</p>
+            <p className="sans mt-1 text-sm text-[#5c6773]">
+              {existing.itrType} · AY {existing.assessmentYear}
+            </p>
+            <Link href="/dashboard" className="mt-3 inline-block">
+              <Button variant="outline" className="min-h-11" aria-label="Continue existing return">
+                Continue existing return
+              </Button>
+            </Link>
+          </Card>
+        ) : null}
+        <form action={createReturnAction} className="mt-6 space-y-4">
+          <Card>
+            <p className="font-medium">Assessment year</p>
+            <label className="sans mt-3 flex min-h-11 items-center gap-3 text-sm">
               <input type="radio" name="assessmentYear" value="2026-27" defaultChecked />
               AY 2026–27 (FY 2025–26)
             </label>
           </Card>
-        </div>
-        <div className={step === 1 ? "block" : "hidden"}>
-          <h1 className="mt-2 text-3xl">Taxpayer type</h1>
-          <Card className="mt-6 space-y-2">
-            {["INDIVIDUAL", "HUF", "FIRM"].map((t) => (
-              <label key={t} className="flex gap-2">
-                <input type="radio" name="taxpayerType" value={t} defaultChecked={t === "INDIVIDUAL"} /> {t}
-              </label>
-            ))}
+          <Card>
+            <p className="font-medium">Taxpayer type</p>
+            <label className="sans mt-3 flex min-h-11 items-center gap-3 text-sm">
+              <input type="radio" name="taxpayerType" value="INDIVIDUAL" defaultChecked />
+              Individual
+            </label>
           </Card>
-        </div>
-        <div className={step === 2 ? "block" : "hidden"}>
-          <h1 className="mt-2 text-3xl">Income sources</h1>
-          <div className="mt-6 grid gap-3 sm:grid-cols-2">
-            {SOURCES.map((s) => (
-              <label key={s} className={`cursor-pointer rounded-xl border p-4 ${sources.includes(s) ? "border-[#1f4e46] bg-[#eef5f3]" : "border-[#e4ddd0] bg-white"}`}>
-                <input className="mr-2" type="checkbox" name="sources" value={s.toUpperCase().replace(" ", "_")} checked={sources.includes(s)} onChange={() => toggle(s)} />
-                {s}
-              </label>
-            ))}
-          </div>
-        </div>
-        <div className={step === 3 ? "block" : "hidden"}>
-          <h1 className="mt-2 text-3xl">Confirm</h1>
-          <p className="mt-3 text-[#5c6773]">Eligibility is decided by published ITR-4 rules, not by the assistant. ITR-3 is used when ITR-4 does not apply.</p>
-          <Button className="mt-6" type="submit">
-            Create return
+          <Card>
+            <p className="font-medium">Income sources</p>
+            <p className="sans mt-1 text-xs text-[#5c6773]">Select what applies. You can refine this after documents are verified.</p>
+            <div className="mt-3 grid gap-2 sm:grid-cols-2">
+              {SOURCES.map(([value, label]) => (
+                <label key={value} className="sans flex min-h-11 items-center gap-2 rounded-xl border border-[#e4ddd0] bg-white px-3 text-sm">
+                  <input type="checkbox" name="sources" value={value} defaultChecked={value === "SALARY"} />
+                  {label}
+                </label>
+              ))}
+            </div>
+          </Card>
+          <Button type="submit" className="min-h-11 w-full sm:w-auto" aria-label="Start your ITR-4">
+            Start your ITR-4
           </Button>
-        </div>
-      </form>
-      <div className="mt-6 flex gap-2">
-        {step > 0 ? (
-          <Button type="button" variant="outline" onClick={() => setStep((s) => s - 1)}>
-            Back
-          </Button>
-        ) : null}
-        {step < 3 ? (
-          <Button type="button" onClick={() => setStep((s) => s + 1)}>
-            Continue
-          </Button>
-        ) : null}
+        </form>
       </div>
     </div>
   );
