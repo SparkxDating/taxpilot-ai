@@ -3,12 +3,14 @@ import { prisma } from "@/lib/db";
 import { redirect } from "next/navigation";
 import { SiteHeader } from "@/components/site-header";
 import { Badge, Button, Card, Disclaimer } from "@/components/ui";
+import { UpgradeCta } from "@/components/upgrade-cta";
 import { WorkspaceProgress } from "@/components/workspace-progress";
 import { inr, json } from "@/lib/utils";
 import Link from "next/link";
 import type { TaxComputation } from "@/lib/tax/engine";
 import { canGenerateItrJson } from "@/lib/itr-json/mapper";
 import { reviewReadiness } from "@/lib/review/readiness";
+import { getUserAccess } from "@/lib/plan";
 import {
   currentWorkspaceStep,
   documentWorkspaceSummary,
@@ -20,6 +22,7 @@ import {
 export default async function Dashboard() {
   const session = await getSession();
   if (!session) redirect("/login");
+  const access = await getUserAccess(session.userId);
   const ret = await prisma.taxReturn.findFirst({
     where: { userId: session.userId },
     orderBy: { updatedAt: "desc" },
@@ -39,6 +42,7 @@ export default async function Dashboard() {
         <SiteHeader authed name={session.name} admin={session.role === "ADMIN"} />
         <div className="mx-auto max-w-3xl px-6 py-10">
           <p className="sans text-sm text-[#5c6773]">Welcome, {session.name}</p>
+          <p className="sans mt-1 text-sm text-[#5c6773]">Plan: {access.label}</p>
           <h1 className="mt-1 text-4xl">Start your ITR-4</h1>
           <p className="sans mt-3 max-w-xl text-sm text-[#5c6773]">
             Upload your tax documents and review the information before generating your return.
@@ -54,6 +58,7 @@ export default async function Dashboard() {
                 Start your ITR-4
               </Button>
             </Link>
+            {!access.isPro ? <UpgradeCta className="mt-3 inline-block" /> : null}
           </Card>
           <div className="mt-10">
             <Disclaimer />
@@ -100,6 +105,7 @@ export default async function Dashboard() {
       <SiteHeader authed name={session.name} admin={session.role === "ADMIN"} />
       <div className="mx-auto max-w-6xl px-6 py-10">
         <p className="sans text-sm text-[#5c6773]">Welcome, {session.name}</p>
+        <p className="sans mt-1 text-sm text-[#5c6773]">Plan: {access.label}</p>
         <h1 className="mt-1 text-4xl">Your tax workspace</h1>
         <p className="mt-2 text-lg">
           ITR-4 — AY {ret.assessmentYear}
@@ -163,12 +169,13 @@ export default async function Dashboard() {
             </ul>
           </Card>
         ) : null}
-        <div className="mt-6">
+        <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center">
           <Link href={continueHref}>
             <Button className="min-h-11 w-full sm:w-auto" aria-label="Continue return">
               Continue return
             </Button>
           </Link>
+          {!access.isPro ? <UpgradeCta /> : null}
         </div>
         <div className="mt-10">
           <Disclaimer />
