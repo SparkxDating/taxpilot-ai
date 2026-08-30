@@ -5,7 +5,7 @@ import { SiteHeader } from "@/components/site-header";
 import { ReturnNav } from "@/components/return-nav";
 import { Badge, Button, Card, Disclaimer } from "@/components/ui";
 import { json, inr } from "@/lib/utils";
-import { generateJsonAction } from "@/app/actions";
+import { generateJsonAction } from "@/app/json-actions";
 import type { TaxComputation } from "@/lib/tax/engine";
 import Link from "next/link";
 import { getUserAccess } from "@/lib/plan";
