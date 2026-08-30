@@ -16,7 +16,8 @@ export async function recomputeReturn(returnId: string) {
     include: { questions: true, answers: true, houseProperties: true, capitalGains: true, user: { include: { profile: true } } },
   });
   if (!ret) return null;
-  const sources = json<string[]>(ret.incomeSourcesJson, []);
+  const sourcesRaw = json<string[]>(ret.incomeSourcesJson, []);
+  const sources = Array.isArray(sourcesRaw) ? sourcesRaw : [];
   const directorAnswer = ret.answers.find((a) => {
     const q = ret.questions.find((qq) => qq.id === a.questionId);
     return q?.code === "DIRECTOR";

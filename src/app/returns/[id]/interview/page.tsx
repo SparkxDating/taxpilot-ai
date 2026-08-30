@@ -8,10 +8,11 @@ import { answerQuestionAction } from "@/app/actions";
 import { parseOptions, seedInterview } from "@/lib/interview";
 import { getAIProvider } from "@/lib/providers/ai";
 import { json } from "@/lib/utils";
-import type { EligibilityResult } from "@/lib/tax-rules/ay2026_27/eligibility";
+import { parseEligibilityResult } from "@/lib/tax-rules/ay2026_27/eligibility";
 import Link from "next/link";
 import { overviewFromRecords, parsePreparation } from "@/lib/documents/prefill";
 import { PrepareSummary } from "@/components/prepare-summary";
+import { recomputeReturn } from "@/lib/tax/persist";
 
 export default async function Interview({ params }: { params: Promise<{ id: string }> }) {
   const session = await getSession();
@@ -33,28 +34,47 @@ export default async function Interview({ params }: { params: Promise<{ id: stri
     },
   });
   if (!ret) notFound();
-  if (ret.questions.length === 0) {
+  const questions = ret.questions ?? [];
+  if (questions.length === 0) {
     const existingSources = json<string[]>(ret.incomeSourcesJson, []);
     await seedInterview(id, existingSources.length ? existingSources : ["SALARY", "BUSINESS", "INTEREST"]);
+    await recomputeReturn(id).catch((error) => {
+      console.error("interview seed recompute failed", error);
+    });
     redirect(`/returns/${id}/interview`);
+  }
+  if (!ret.eligibilityJson || ret.eligibilityJson === "{}") {
+    const recomputed = await recomputeReturn(id).catch((error) => {
+      console.error("interview eligibility recompute failed", error);
+      return null;
+    });
+    if (recomputed) redirect(`/returns/${id}/interview`);
   }
   const sources = json<string[]>(ret.incomeSourcesJson, []);
   const overview = overviewFromRecords(id, {
-    documents: ret.documents,
-    facts: ret.taxFacts,
-    openConflicts: ret.documentConflicts.filter((c) => c.status === "OPEN"),
+    documents: ret.documents ?? [],
+    facts: ret.taxFacts ?? [],
+    openConflicts: (ret.documentConflicts ?? []).filter((c) => c.status === "OPEN"),
     prep: parsePreparation(ret.preparationJson),
     hasPan: Boolean(ret.user.profile?.pan),
     salarySources: sources.some((x) => x.includes("SALARY")),
-    hasSalary: Boolean(ret.salary[0]?.grossSalary),
+    hasSalary: Boolean(ret.salary?.[0]?.grossSalary),
     businessSources: sources.some((x) => ["BUSINESS", "FREELANCING", "PROFESSION"].includes(x)),
-    hasBusiness: Boolean(ret.business[0]?.turnover || ret.professional[0]?.grossReceipts),
-    hasBank: ret.bankAccounts.length > 0,
-    validationErrors: ret.validationErrors.filter((e) => e.severity === "ERROR").length,
+    hasBusiness: Boolean(ret.business?.[0]?.turnover || ret.professional?.[0]?.grossReceipts),
+    hasBank: (ret.bankAccounts ?? []).length > 0,
+    validationErrors: (ret.validationErrors ?? []).filter((e) => e.severity === "ERROR").length,
   });
-  const eligibility = json<EligibilityResult>(ret.eligibilityJson, { recommended: "ITR-4", itr4Eligible: true, reasons: [], warnings: [] });
-  const pending = ret.questions.find((q) => q.status === "PENDING");
-  const explainer = pending ? await getAIProvider().explain(pending.helpText || pending.prompt) : "";
+  const eligibility = parseEligibilityResult(ret.eligibilityJson);
+  const pending = questions.find((q) => q.status === "PENDING");
+  let explainer = "";
+  if (pending) {
+    try {
+      explainer = await getAIProvider().explain(pending.helpText || pending.prompt);
+    } catch (error) {
+      console.error("interview explain failed", error);
+      explainer = pending.helpText || "";
+    }
+  }
   return (
     <div>
       <SiteHeader authed name={session.name} />
@@ -80,7 +100,7 @@ export default async function Interview({ params }: { params: Promise<{ id: stri
                 <li key={r}>{r}</li>
               ))}
             </ul>
-            <p className="sans mt-2 text-sm">You are on the ITR-3 path. Detailed P&amp;L screens are available under Income.</p>
+            <p className="sans mt-2 text-sm">You are on the ITR-3 path. Detailed P&L screens are available under Income.</p>
           </Card>
         ) : null}
         {pending ? (
@@ -110,9 +130,9 @@ export default async function Interview({ params }: { params: Promise<{ id: stri
           </Card>
         )}
         <ul className="sans mt-6 space-y-1 text-sm text-[#5c6773]">
-          {ret.questions.map((q) => (
+          {questions.map((q) => (
             <li key={q.id}>
-              {q.status === "ANSWERED" ? "✓" : "○"} {q.prompt} {q.answers[0] ? `— ${q.answers[0].value}` : ""}
+              {q.status === "ANSWERED" ? "✓" : "○"} {q.prompt} {q.answers?.[0] ? `— ${q.answers[0].value}` : ""}
             </li>
           ))}
         </ul>

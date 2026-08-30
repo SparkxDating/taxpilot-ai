@@ -13,10 +13,22 @@ export function inr(n: number) {
   }).format(n);
 }
 
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
 export function json<T>(raw: string | null | undefined, fallback: T): T {
   if (!raw) return fallback;
   try {
-    return JSON.parse(raw) as T;
+    const parsed = JSON.parse(raw) as unknown;
+    if (parsed == null) return fallback;
+    if (Array.isArray(fallback)) {
+      return (Array.isArray(parsed) ? parsed : fallback) as T;
+    }
+    if (isPlainObject(fallback) && isPlainObject(parsed)) {
+      return { ...fallback, ...parsed } as T;
+    }
+    return parsed as T;
   } catch {
     return fallback;
   }

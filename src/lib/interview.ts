@@ -3,6 +3,8 @@ import { json } from "./utils";
 
 type Source = string;
 
+const DEFAULT_OPTIONS = ["Yes", "No", "Not sure"];
+
 export async function seedInterview(returnId: string, sources: Source[]) {
   const existing = await prisma.question.count({ where: { returnId } });
   if (existing) return;
@@ -68,6 +70,8 @@ export async function seedInterview(returnId: string, sources: Source[]) {
   });
 }
 
-export function parseOptions(raw: string) {
-  return json<string[]>(raw, ["Yes", "No", "Not sure"]);
+export function parseOptions(raw: string | null | undefined) {
+  const parsed = json<string[]>(raw, DEFAULT_OPTIONS);
+  if (!Array.isArray(parsed) || parsed.length === 0) return DEFAULT_OPTIONS;
+  return parsed.filter((opt) => typeof opt === "string" && opt.trim());
 }

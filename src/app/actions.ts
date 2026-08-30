@@ -103,9 +103,14 @@ export async function createReturnAction(formData: FormData) {
       incomeSources: { create: sources.map((kind) => ({ kind, selected: true })) },
     },
   });
-  await seedInterview(ret.id, sources);
-  await audit({ userId: session.userId, returnId: ret.id, action: "return.created", entity: "TaxReturn", entityId: ret.id });
-  await recomputeReturn(ret.id);
+  try {
+    await seedInterview(ret.id, sources);
+    await audit({ userId: session.userId, returnId: ret.id, action: "return.created", entity: "TaxReturn", entityId: ret.id });
+    await recomputeReturn(ret.id);
+  } catch (error) {
+    rethrowControl(error);
+    console.error("create return follow-up failed", error);
+  }
   redirect(`/returns/${ret.id}/interview`);
 }
 

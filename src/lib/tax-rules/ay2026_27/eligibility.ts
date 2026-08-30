@@ -117,3 +117,30 @@ export function determineItrType(input: EligibilityInput): EligibilityResult {
   }
   return { recommended: "ITR-3", itr4Eligible: false, reasons, warnings };
 }
+
+const DEFAULT_ELIGIBILITY: EligibilityResult = {
+  recommended: "ITR-4",
+  itr4Eligible: true,
+  reasons: [],
+  warnings: [],
+};
+
+export function parseEligibilityResult(raw: string | null | undefined): EligibilityResult {
+  if (!raw) return { ...DEFAULT_ELIGIBILITY, reasons: [], warnings: [] };
+  try {
+    const parsed = JSON.parse(raw) as Partial<EligibilityResult> | null;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return { ...DEFAULT_ELIGIBILITY, reasons: [], warnings: [] };
+    }
+    const recommended = parsed.recommended;
+    return {
+      recommended: recommended === "ITR-3" || recommended === "ITR-4" || recommended === "UNSUPPORTED" ? recommended : DEFAULT_ELIGIBILITY.recommended,
+      itr4Eligible: typeof parsed.itr4Eligible === "boolean" ? parsed.itr4Eligible : DEFAULT_ELIGIBILITY.itr4Eligible,
+      reasons: Array.isArray(parsed.reasons) ? parsed.reasons.filter((r) => typeof r === "string") : [],
+      warnings: Array.isArray(parsed.warnings) ? parsed.warnings.filter((w) => typeof w === "string") : [],
+    };
+  } catch {
+    return { ...DEFAULT_ELIGIBILITY, reasons: [], warnings: [] };
+  }
+}
+
