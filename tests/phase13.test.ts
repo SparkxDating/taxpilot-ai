@@ -10,6 +10,7 @@ import {
   RESET_EMAIL_SUBJECT,
   TOKEN_TTL_MS,
   type PasswordResetStore,
+  type ResetEmailPayload,
   type ResetTokenRow,
   clearPasswordResetRateLimit,
   completePasswordResetWith,
@@ -17,7 +18,9 @@ import {
   generateResetToken,
   hashLooksHashed,
   hashResetToken,
+  isResetEmailConfigured,
   requestPasswordResetWith,
+  sendConfiguredResetEmail,
   takeDevResetUrl,
 } from "@/lib/password-reset";
 
@@ -38,6 +41,7 @@ function createMemoryStore(seed?: { email: string; passwordHash: string }) {
   const tokens = new Map<string, ResetTokenRow>();
   const passwords = new Map<string, string>();
   const returns = new Map<string, string[]>();
+  const emails: ResetEmailPayload[] = [];
   if (seed) {
     const id = "user-1";
     users.set(seed.email, { id, email: seed.email });
@@ -67,9 +71,16 @@ function createMemoryStore(seed?: { email: string; passwordHash: string }) {
       passwords.set(userId, passwordHash);
     },
     hashPassword: (password) => bcryptHash(password, 12),
+    deliverResetEmail: async (payload) => {
+      emails.push(payload);
+    },
+    commitReset: async ({ tokenId, userId, passwordHash }) => {
+      await store.updatePassword(userId, passwordHash);
+      return store.consumeToken(tokenId);
+    },
   };
 
-  return { store, tokens, passwords, returns };
+  return { store, tokens, passwords, returns, emails };
 }
 
 describe("Phase 13 password reset", () => {
@@ -110,6 +121,44 @@ describe("Phase 13 password reset", () => {
     expect([...known.tokens.keys()][0]?.includes("?token=")).toBe(false);
   });
 
+  it("calls the email sender for an existing account with subject, URL, and expiry copy", async () => {
+    const passwordHash = await bcryptHash(OLD_PASSWORD, 12);
+    const mem = createMemoryStore({ email: "mail@taxpilot.test", passwordHash });
+    const result = await requestPasswordResetWith(mem.store, "mail@taxpilot.test");
+    expect(result.message).toBe(GENERIC_RESET_MESSAGE);
+    expect(mem.emails).toHaveLength(1);
+    const sent = mem.emails[0]!;
+    expect(sent.to).toBe("mail@taxpilot.test");
+    expect(sent.subject).toBe(RESET_EMAIL_SUBJECT);
+    expect(sent.text).toContain("We received a request to reset your TaxPilot password.");
+    expect(sent.text).toContain("This link expires in 1 hour.");
+    expect(sent.text).toContain("/reset-password?token=");
+    expect(sent.text.includes(OLD_PASSWORD)).toBe(false);
+    expect(sent.text.includes(NEW_PASSWORD)).toBe(false);
+    const token = tokenFromUrl(takeDevResetUrl("mail@taxpilot.test"));
+    expect(sent.text).toContain(token);
+  });
+
+  it("does not use the email sender to reveal an unknown account", async () => {
+    const passwordHash = await bcryptHash(OLD_PASSWORD, 12);
+    const mem = createMemoryStore({ email: "known@taxpilot.test", passwordHash });
+    const result = await requestPasswordResetWith(mem.store, "missing@taxpilot.test");
+    expect(result.message).toBe(GENERIC_RESET_MESSAGE);
+    expect(mem.emails).toHaveLength(0);
+    expect(mem.tokens.size).toBe(0);
+  });
+
+  it("does not send and does not fake delivery when no email provider is configured", async () => {
+    expect(isResetEmailConfigured()).toBe(false);
+    await expect(
+      sendConfiguredResetEmail({
+        to: "nobody@taxpilot.test",
+        subject: RESET_EMAIL_SUBJECT,
+        text: "reset",
+      }),
+    ).resolves.toBeUndefined();
+  });
+
   it("composes the reset email without the password and with a 1-hour warning", () => {
     const email = composeResetEmail("https://example.com/reset-password?token=abc");
     expect(email.subject).toBe(RESET_EMAIL_SUBJECT);
@@ -141,10 +190,28 @@ describe("Phase 13 password reset", () => {
     expect(result.ok).toBe(true);
     const next = mem.passwords.get("user-1")!;
     expect(hashLooksHashed(next, NEW_PASSWORD)).toBe(true);
+    expect(next.includes(NEW_PASSWORD)).toBe(false);
     expect(await bcryptCompare(NEW_PASSWORD, next)).toBe(true);
     expect(await bcryptCompare(OLD_PASSWORD, next)).toBe(false);
     expect(mem.returns.get("user-1")).toEqual(["return-1"]);
     expect(MIN_PASSWORD_LENGTH).toBe(8);
+    expect(stored!.usedAt).toBeTruthy();
+  });
+
+  it("lets the new password authenticate and rejects the old password", async () => {
+    const passwordHash = await bcryptHash(OLD_PASSWORD, 12);
+    const mem = createMemoryStore({ email: "login@taxpilot.test", passwordHash });
+    await requestPasswordResetWith(mem.store, "login@taxpilot.test");
+    const token = tokenFromUrl(takeDevResetUrl("login@taxpilot.test"));
+    const result = await completePasswordResetWith(mem.store, {
+      token,
+      newPassword: NEW_PASSWORD,
+      confirmPassword: NEW_PASSWORD,
+    });
+    expect(result.ok).toBe(true);
+    const next = mem.passwords.get("user-1")!;
+    expect(await bcryptCompare(NEW_PASSWORD, next)).toBe(true);
+    expect(await bcryptCompare(OLD_PASSWORD, next)).toBe(false);
   });
 
   it("blocks expired, invalid, and reused tokens", async () => {
@@ -191,6 +258,37 @@ describe("Phase 13 password reset", () => {
     expect(await bcryptCompare(NEW_PASSWORD, mem.passwords.get("user-1")!)).toBe(true);
   });
 
+  it("does not consume the token if password update fails", async () => {
+    const passwordHash = await bcryptHash(OLD_PASSWORD, 12);
+    const mem = createMemoryStore({ email: "fail@taxpilot.test", passwordHash });
+    await requestPasswordResetWith(mem.store, "fail@taxpilot.test");
+    const token = tokenFromUrl(takeDevResetUrl("fail@taxpilot.test"));
+    const stored = [...mem.tokens.values()][0]!;
+    mem.store.updatePassword = async () => {
+      throw new Error("password update failed");
+    };
+
+    const failed = await completePasswordResetWith(mem.store, {
+      token,
+      newPassword: NEW_PASSWORD,
+      confirmPassword: NEW_PASSWORD,
+    });
+    expect(failed.ok).toBe(false);
+    expect(stored.usedAt).toBeNull();
+    expect(mem.passwords.get("user-1")).toBe(passwordHash);
+
+    mem.store.updatePassword = async (userId, nextHash) => {
+      mem.passwords.set(userId, nextHash);
+    };
+    const retried = await completePasswordResetWith(mem.store, {
+      token,
+      newPassword: NEW_PASSWORD,
+      confirmPassword: NEW_PASSWORD,
+    });
+    expect(retried.ok).toBe(true);
+    expect(await bcryptCompare(NEW_PASSWORD, mem.passwords.get("user-1")!)).toBe(true);
+  });
+
   it("rate-limits repeated reset requests for the same email or IP", async () => {
     const passwordHash = await bcryptHash(OLD_PASSWORD, 12);
     const mem = createMemoryStore({ email: "rate@taxpilot.test", passwordHash });
@@ -199,11 +297,13 @@ describe("Phase 13 password reset", () => {
     expect(first.message).toBe(GENERIC_RESET_MESSAGE);
     expect(second.message).toBe(GENERIC_RESET_MESSAGE);
     expect(mem.tokens.size).toBe(1);
+    expect(mem.emails).toHaveLength(1);
 
     clearPasswordResetRateLimit();
     await requestPasswordResetWith(mem.store, "rate@taxpilot.test", { ip: "203.0.113.9" });
     const blocked = await requestPasswordResetWith(mem.store, "missing@taxpilot.test", { ip: "203.0.113.9" });
     expect(blocked.message).toBe(GENERIC_RESET_MESSAGE);
     expect(mem.tokens.size).toBe(2);
+    expect(mem.emails).toHaveLength(2);
   });
 });
