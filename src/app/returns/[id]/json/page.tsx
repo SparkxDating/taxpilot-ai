@@ -31,8 +31,8 @@ export default async function JsonPage({ params }: { params: Promise<{ id: strin
       <div className="mx-auto max-w-3xl px-6 py-8">
         <ReturnNav id={id} current="json" />
         <h1 className="text-3xl">ITR JSON</h1>
-        {ret.itrType !== "ITR-4" || gate.error === "itr3" ? (
-          <Card className="mt-6">ITR-3 preparation is currently in development. Filing JSON generation is not available yet.</Card>
+        {ret.itrType !== "ITR-4" && ret.itrType !== "ITR-3" ? (
+          <Card className="mt-6">Filing JSON is not available for this return type.</Card>
         ) : (
           <>
             <Card className="mt-6 sans text-sm space-y-1">

@@ -1,15 +1,27 @@
 import type { NormalizedReturn } from "@/lib/tax/model";
-import { verifySchemaIntegrity } from "@/lib/itr-json/schemaIntegrity";
+import { verifyItr3SchemaIntegrity, verifySchemaIntegrity } from "@/lib/itr-json/schemaIntegrity";
 import { completenessValidate } from "./completeness";
 import { businessValidate, canGenerateJson } from "./businessRules";
 import { detectUnsupported } from "@/lib/itr-rules/ay2026_27/unsupported";
 import { determineItrType } from "@/lib/tax-rules/ay2026_27/eligibility";
 import { TaxEngine } from "@/lib/tax/engine";
-import { validateITR4Json } from "@/lib/itr-json/validator/officialValidator";
+import { validateITR3Json, validateITR4Json } from "@/lib/itr-json/validator/officialValidator";
 import { mapItr4Official } from "@/lib/itr-json/ay2026_27/itr4/mapper";
-import { auditITR4Mapping } from "@/lib/itr-json/ay2026_27/itr4/auditMapping";
+import { auditITR4Mapping, type MappingAudit } from "@/lib/itr-json/ay2026_27/itr4/auditMapping";
+import { collectItr3MappingIssues, mapItr3Official, type Itr3MapIssue } from "@/lib/itr-json/ay2026_27/itr3/mapper";
+import type { OfficialValidationResult } from "@/lib/itr-json/validator/validationTypes";
 
 export type LayerResult = "PASS" | "FAIL";
+
+const EMPTY_MAPPING: MappingAudit = {
+  status: "PASS",
+  unmappedInternal: [],
+  duplicatePaths: [],
+  missingRequiredMappings: [],
+  typeMismatches: [],
+  invalidEnums: [],
+  unreachableMappings: [],
+};
 
 export function evaluateFilingGate(
   data: NormalizedReturn,
@@ -17,7 +29,7 @@ export function evaluateFilingGate(
   generatedAt?: Date,
   openDocumentConflicts = 0,
 ) {
-  const integrity = verifySchemaIntegrity();
+  const integrity = data.itrType === "ITR-3" ? verifyItr3SchemaIntegrity() : verifySchemaIntegrity();
   const completeness = completenessValidate(data, returnId);
   const unsupported = detectUnsupported(data, returnId);
   const calc = TaxEngine.calculate(data, generatedAt);
@@ -56,9 +68,17 @@ export function evaluateFilingGate(
     calc.flags.includes("UNSUPPORTED_INTEREST_CALCULATION") ||
     calc.flags.includes("UNSUPPORTED_CAPITAL_GAIN_DATES") ||
     calc.flags.includes("UNSUPPORTED_CAPITAL_GAIN_HOLDING");
-  const mapping = auditITR4Mapping();
+  const itr3Issues: Itr3MapIssue[] = data.itrType === "ITR-3" ? collectItr3MappingIssues(data) : [];
+  const mapping: MappingAudit =
+    data.itrType === "ITR-4"
+      ? auditITR4Mapping()
+      : {
+          ...EMPTY_MAPPING,
+          status: itr3Issues.length ? "ERROR" : "PASS",
+          missingRequiredMappings: itr3Issues.map((i) => i.field),
+        };
 
-  let official: ReturnType<typeof validateITR4Json> = {
+  let official: OfficialValidationResult = {
     valid: false,
     errors: [],
     warnings: [],
@@ -66,11 +86,12 @@ export function evaluateFilingGate(
     schemaMode: "OfficialSchema",
   };
   let json: unknown = null;
+  const typeOk = data.itrType === "ITR-4" ? eligibility.itr4Eligible : data.itrType === "ITR-3";
   const preOk =
     integrity.ok &&
     completeness.length === 0 &&
     unsupported.length === 0 &&
-    (data.itrType !== "ITR-4" || eligibility.itr4Eligible) &&
+    typeOk &&
     canGenerateJson(business) &&
     !taxFail &&
     mapping.status !== "ERROR";
@@ -79,12 +100,30 @@ export function evaluateFilingGate(
     const mapped = mapItr4Official(data, generatedAt);
     json = mapped.json;
     official = validateITR4Json(mapped.json, data.assessmentYear);
+  } else if (data.itrType === "ITR-3" && preOk) {
+    const mapped = mapItr3Official(data, generatedAt);
+    json = mapped.json;
+    official = validateITR3Json(mapped.json, data.assessmentYear);
+  } else if (data.itrType === "ITR-3" && itr3Issues.length) {
+    official = {
+      valid: false,
+      errors: itr3Issues.map((i) => ({
+        path: i.field,
+        field: i.field,
+        keyword: "required",
+        message: i.message,
+        explanation: i.message,
+      })),
+      warnings: [],
+      schemaVersion: official.schemaVersion,
+      schemaMode: "OfficialSchema",
+    };
   }
 
   const layers = {
     schemaIntegrity: (integrity.ok ? "PASS" : "FAIL") as LayerResult,
     dataCompleteness: (completeness.length === 0 ? "PASS" : "FAIL") as LayerResult,
-    eligibility: (data.itrType === "ITR-4" && eligibility.itr4Eligible ? "PASS" : "FAIL") as LayerResult,
+    eligibility: (typeOk ? "PASS" : "FAIL") as LayerResult,
     businessRules: (canGenerateJson(business) ? "PASS" : "FAIL") as LayerResult,
     taxCalculation: (!taxFail ? "PASS" : "FAIL") as LayerResult,
     unsupported: (unsupported.length === 0 ? "PASS" : "FAIL") as LayerResult,
@@ -115,6 +154,7 @@ export function evaluateFilingGate(
     official,
     json: conflictBlock ? null : json,
     mapping,
+    mappingIssues: itr3Issues,
     openDocumentConflicts,
   };
 }

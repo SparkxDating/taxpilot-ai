@@ -1,0 +1,20 @@
+{
+  "assessmentYear": "2026-27",
+  "itrType": "ITR-3",
+  "schemaFile": "schema.json",
+  "officialFilename": "ITR-3_2026_Main_V1.1.json",
+  "schemaVersion": "Ver1.0",
+  "formVer": "Ver1.0",
+  "source": "Income Tax Department",
+  "sourceUrl": "https://www.incometax.gov.in/iec/foportal/sites/default/files/2026-07/ITR-3_2026_Main_V1.1.json",
+  "sourcePage": "https://www.incometax.gov.in/iec/foportal/downloads/income-tax-returns",
+  "releaseDate": "2026-06-30",
+  "firstReleased": "2026-06-18",
+  "fileSize": 1060874,
+  "sha256": "66f4bd705e0e0788fdacb37eb297ace56749d791b84f2f170f4da84236c25e8b",
+  "verifiedMatch": true,
+  "verifiedAt": "2026-08-31",
+  "jsonSchemaDraft": "http://json-schema.org/draft-04/schema#",
+  "schemaChangeDocument": "https://www.incometax.gov.in/iec/foportal/sites/default/files/2026-07/ITR%203_Schema%20change%20document_AY2026-27_V1.1_0.pdf",
+  "validationRulesDocument": "https://www.incometax.gov.in/iec/foportal/sites/default/files/2026-06/CBDT_e-filing_ITR-3_Validation%20Rules_V1.0_AY%2026-27.pdf"
+}

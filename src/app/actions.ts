@@ -128,6 +128,15 @@ export async function answerQuestionAction(formData: FormData) {
   if (q.code === "DIRECTOR" && value === "Yes") {
     await prisma.taxReturn.update({ where: { id: ret.id }, data: { itrType: "ITR-3" } });
   }
+  if (q.code === "PRESUMPTIVE" && value === "No") {
+    await prisma.taxReturn.update({ where: { id: ret.id }, data: { itrType: "ITR-3" } });
+    const existingBiz = await prisma.businessIncome.findFirst({ where: { returnId: ret.id } });
+    if (existingBiz) {
+      await prisma.businessIncome.update({ where: { id: existingBiz.id }, data: { section: "BOOKS" } });
+    } else {
+      await prisma.businessIncome.create({ data: { returnId: ret.id, section: "BOOKS" } });
+    }
+  }
   await recomputeReturn(ret.id);
   revalidatePath(`/returns/${ret.id}/interview`);
 }
@@ -205,8 +214,9 @@ export async function saveIncomeAction(formData: FormData) {
     const digital = n(String(formData.get("digitalReceipts")));
     const cash = n(String(formData.get("cashReceipts")));
     const turnover = n(String(formData.get("turnover"))) || digital + cash;
+    const books = existingBiz?.section === "BOOKS";
     const data = {
-      section: "44AD" as const,
+      section: (books ? "BOOKS" : "44AD") as "BOOKS" | "44AD",
       nature: String(formData.get("nature") || "").trim(),
       natureCode: String(formData.get("natureCode") || "").trim(),
       turnover,
@@ -218,6 +228,47 @@ export async function saveIncomeAction(formData: FormData) {
       await prisma.businessIncome.update({ where: { id: existingBiz.id }, data });
     } else if (turnover || digital) {
       await prisma.businessIncome.create({ data: { returnId: id, ...data } });
+    }
+  }
+
+  if (formData.has("plRevenue") || formData.has("plNetProfit")) {
+    const revenue = n(String(formData.get("plRevenue")));
+    const plOther = n(String(formData.get("plOtherIncome")));
+    const purchases = n(String(formData.get("plPurchases")));
+    const employeeCost = n(String(formData.get("plEmployeeCost")));
+    const depreciation = n(String(formData.get("plDepreciation")));
+    const otherExpenses = n(String(formData.get("plOtherExpenses")));
+    const netRaw = String(formData.get("plNetProfit") || "").trim();
+    const computed = revenue + plOther - purchases - employeeCost - depreciation - otherExpenses;
+    const netProfit = netRaw === "" ? computed : n(netRaw);
+    const hasPl = Boolean(revenue || plOther || purchases || employeeCost || depreciation || otherExpenses || netRaw);
+    if (hasPl) {
+      await prisma.profitLoss.upsert({
+        where: { returnId: id },
+        update: { revenue, otherIncome: plOther, purchases, employeeCost, depreciation, otherExpenses, netProfit },
+        create: { returnId: id, revenue, otherIncome: plOther, purchases, employeeCost, depreciation, otherExpenses, netProfit },
+      });
+      const existingBiz = await prisma.businessIncome.findFirst({ where: { returnId: id } });
+      const bizData = {
+        section: "BOOKS" as const,
+        turnover: revenue || existingBiz?.turnover || 0,
+        declaredIncome: netProfit,
+        nature: String(formData.get("nature") || existingBiz?.nature || "").trim(),
+        natureCode: String(formData.get("natureCode") || existingBiz?.natureCode || "").trim(),
+      };
+      if (existingBiz) {
+        await prisma.businessIncome.update({ where: { id: existingBiz.id }, data: bizData });
+      } else if (revenue || netProfit) {
+        await prisma.businessIncome.create({
+          data: {
+            returnId: id,
+            ...bizData,
+            digitalReceipts: 0,
+            cashReceipts: 0,
+          },
+        });
+      }
+      await prisma.taxReturn.update({ where: { id }, data: { itrType: "ITR-3" } });
     }
   }
 
@@ -446,14 +497,14 @@ export async function generateJsonAction(formData: FormData) {
   const payload = JSON.stringify(result.json, null, 2);
   const dir = path.join(process.cwd(), "storage", "json", id);
   await mkdir(dir, { recursive: true });
-  const file = path.join(dir, `ITR-4-${Date.now()}.json`);
+  const file = path.join(dir, `${data.itrType}-${Date.now()}.json`);
   await writeFile(file, payload, "utf8");
   await prisma.iTRJsonFile.updateMany({ where: { returnId: id, status: "CURRENT" }, data: { status: "SUPERSEDED" } });
   await prisma.iTRJsonFile.create({
     data: {
       returnId: id,
       assessmentYear: data.assessmentYear,
-      itrType: "ITR-4",
+      itrType: data.itrType,
       schemaVersion: result.schemaVersion,
       fileHash: result.digest,
       storagePath: file,

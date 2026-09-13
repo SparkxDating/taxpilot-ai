@@ -16,6 +16,7 @@ export async function loadNormalized(returnId: string, userId?: string): Promise
       tdsEntries: true,
       taxPayments: true,
       bankAccounts: true,
+      profitLoss: true,
       user: { include: { profile: true } },
     },
   });
@@ -23,6 +24,8 @@ export async function loadNormalized(returnId: string, userId?: string): Promise
   const salary = ret.salary[0];
   const biz = ret.business[0];
   const prof = ret.professional[0];
+  const pl = ret.profitLoss;
+  const booksFromPl = Boolean(pl && (pl.revenue || pl.netProfit));
   return {
     assessmentYear: ret.assessmentYear,
     itrType: (ret.itrType as NormalizedReturn["itrType"]) || "UNDETERMINED",
@@ -51,11 +54,11 @@ export async function loadNormalized(returnId: string, userId?: string): Promise
       employerTan: salary?.employerTan || "",
     },
     business: {
-      section: (biz?.section as "44AD" | "44AE" | "BOOKS") || "44AD",
-      turnover: biz?.turnover || 0,
+      section: booksFromPl ? "BOOKS" : (biz?.section as "44AD" | "44AE" | "BOOKS") || "44AD",
+      turnover: booksFromPl ? pl!.revenue : biz?.turnover || 0,
       digitalReceipts: biz?.digitalReceipts || 0,
       cashReceipts: biz?.cashReceipts || 0,
-      declaredIncome: biz?.declaredIncome || 0,
+      declaredIncome: booksFromPl ? pl!.netProfit : biz?.declaredIncome || 0,
       nature: biz?.nature || "",
       natureCode: biz?.natureCode || undefined,
     },

@@ -18,17 +18,24 @@ export async function recomputeReturn(returnId: string) {
   if (!ret) return null;
   const sourcesRaw = json<string[]>(ret.incomeSourcesJson, []);
   const sources = Array.isArray(sourcesRaw) ? sourcesRaw : [];
-  const directorAnswer = ret.answers.find((a) => {
-    const q = ret.questions.find((qq) => qq.id === a.questionId);
-    return q?.code === "DIRECTOR";
-  });
+  const answerFor = (code: string) => {
+    const q = ret.questions.find((qq) => qq.code === code);
+    if (!q) return undefined;
+    return ret.answers.find((a) => a.questionId === q.id)?.value;
+  };
+  const directorAnswer = answerFor("DIRECTOR");
+  const presumptiveAnswer = answerFor("PRESUMPTIVE");
+  const usesPresumptive =
+    presumptiveAnswer !== "No" && data.business.section !== "BOOKS" && data.profession.section !== "BOOKS";
+  const detailedBooks =
+    data.business.section === "BOOKS" || data.profession.section === "BOOKS" || presumptiveAnswer === "No";
   const eligibility = determineItrType({
     taxpayerType: ret.taxpayerType as "INDIVIDUAL" | "HUF" | "FIRM",
     residentialStatus: (["RESIDENT", "RNOR", "NRI"].includes(ret.user.profile?.residentialStatus || "")
       ? (ret.user.profile!.residentialStatus as "RESIDENT" | "RNOR" | "NRI")
       : ""),
     isLlp: false,
-    isDirector: directorAnswer?.value === "Yes",
+    isDirector: directorAnswer === "Yes",
     sources,
     totalIncome: 0,
     housePropertyCount: ret.houseProperties.length,
@@ -43,8 +50,8 @@ export async function recomputeReturn(returnId: string) {
     businessCash: data.business.cashReceipts,
     professionReceipts: data.profession.grossReceipts,
     professionCash: data.profession.cashReceipts,
-    usesPresumptive: data.business.section !== "BOOKS" || data.profession.section !== "BOOKS",
-    detailedBooks: sources.includes("BOOKS") || data.business.section === "BOOKS",
+    usesPresumptive,
+    detailedBooks,
     fnoTrading: sources.includes("FNO"),
   });
   const calc = TaxEngine.calculate({
@@ -57,7 +64,7 @@ export async function recomputeReturn(returnId: string) {
       ? (ret.user.profile!.residentialStatus as "RESIDENT" | "RNOR" | "NRI")
       : ""),
     isLlp: false,
-    isDirector: directorAnswer?.value === "Yes",
+    isDirector: directorAnswer === "Yes",
     sources,
     totalIncome: calc.grossTotalIncomeIncLtcg,
     housePropertyCount: ret.houseProperties.length,
@@ -72,8 +79,8 @@ export async function recomputeReturn(returnId: string) {
     businessCash: data.business.cashReceipts,
     professionReceipts: data.profession.grossReceipts,
     professionCash: data.profession.cashReceipts,
-    usesPresumptive: true,
-    detailedBooks: data.business.section === "BOOKS",
+    usesPresumptive,
+    detailedBooks,
     fnoTrading: sources.includes("FNO"),
   });
   const issues = validateReturn(

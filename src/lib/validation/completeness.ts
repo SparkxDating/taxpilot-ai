@@ -56,15 +56,17 @@ export function completenessValidate(data: NormalizedReturn, returnId = "new"): 
     if (!b.bankName?.trim()) err("bankName", "Bank name is required.", "The official schema requires BankName.", "tds");
   }
   const hasBiz = data.business.turnover > 0 || data.business.digitalReceipts > 0 || data.business.cashReceipts > 0;
+  const books = data.business.section === "BOOKS";
   if (hasBiz && !data.business.nature.trim()) err("nature", "Nature of business is required.", "Do not default a NIC code or description.", "income");
-  if (hasBiz && !data.business.natureCode) err("natureCode", "Business code (CodeAD) is required.", "Select the official NatOfBus44AD code. TaxPilot will not guess 09027.", "income");
-  if (hasBiz && data.business.natureCode && !isCodeAD(data.business.natureCode)) {
+  if (hasBiz && !books && !data.business.natureCode) err("natureCode", "Business code (CodeAD) is required.", "Select the official NatOfBus44AD code. TaxPilot will not guess 09027.", "income");
+  if (hasBiz && !books && data.business.natureCode && !isCodeAD(data.business.natureCode)) {
     err("natureCode", "Business code is not an official NatOfBus44AD value.", "Choose a code from the official ITR-4 schema enum.", "income");
   }
   const hasProf = data.profession.grossReceipts > 0;
+  const profBooks = data.profession.section === "BOOKS";
   if (hasProf && !data.profession.profession.trim()) err("profession", "Profession description is required.", "Do not invent a profession name.", "income");
-  if (hasProf && !data.profession.natureCode) err("professionCode", "Profession code (CodeADA) is required.", "Select the official NatOfBus44ADA code.", "income");
-  if (hasProf && data.profession.natureCode && !isCodeADA(data.profession.natureCode)) {
+  if (hasProf && !profBooks && !data.profession.natureCode) err("professionCode", "Profession code (CodeADA) is required.", "Select the official NatOfBus44ADA code.", "income");
+  if (hasProf && !profBooks && data.profession.natureCode && !isCodeADA(data.profession.natureCode)) {
     err("professionCode", "Profession code is not an official NatOfBus44ADA value.", "Choose a code from the official ITR-4 schema enum.", "income");
   }
   if (data.salary.tds > 0 && !data.salary.employerTan) err("employerTan", "Employer TAN is required when salary TDS is claimed.", "TAN cannot be invented.", "income");

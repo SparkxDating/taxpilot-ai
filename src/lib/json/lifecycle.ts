@@ -9,9 +9,17 @@ export function nextJsonFileStatuses(previousHash: string | null | undefined, ne
 }
 
 export function normalizeJsonForCompare(json: unknown) {
-  const clone = JSON.parse(JSON.stringify(json)) as { ITR?: { ITR4?: { CreationInfo?: { JSONCreationDate?: string } } } };
+  const clone = JSON.parse(JSON.stringify(json)) as {
+    ITR?: {
+      ITR4?: { CreationInfo?: { JSONCreationDate?: string } };
+      ITR3?: { CreationInfo?: { JSONCreationDate?: string } };
+    };
+  };
   if (clone?.ITR?.ITR4?.CreationInfo) {
     clone.ITR.ITR4.CreationInfo.JSONCreationDate = "";
+  }
+  if (clone?.ITR?.ITR3?.CreationInfo) {
+    clone.ITR.ITR3.CreationInfo.JSONCreationDate = "";
   }
   return clone;
 }

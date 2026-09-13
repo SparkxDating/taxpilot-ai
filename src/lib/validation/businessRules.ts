@@ -29,19 +29,6 @@ export function businessValidate(data: NormalizedReturn, returnId = ""): Busines
     });
   };
 
-  if (data.itrType === "ITR-3") {
-    push({
-      id: "ITR3_DISABLED",
-      code: "UNSUPPORTED_SCENARIO",
-      severity: "ERROR",
-      field: "itrType",
-      section: "Eligibility",
-      message: "ITR-3 preparation is currently in development. Filing JSON generation is not available yet.",
-      explanation: "Phase 2 supports filing-grade ITR-4 only.",
-      fixRoute: `/returns/${id}/interview`,
-    });
-  }
-
   const money = (
     value: number,
     field: string,
@@ -131,7 +118,7 @@ export function businessValidate(data: NormalizedReturn, returnId = ""): Busines
       explanation: "Gross receipts must be zero or positive.",
     });
   }
-  if (data.business.turnover > 0) {
+  if (data.business.section !== "BOOKS" && data.business.turnover > 0) {
     const p = presumptive44AD(data.business.turnover, data.business.digitalReceipts, data.business.cashReceipts, data.business.declaredIncome);
     if (!p.withinLimit) {
       push({ id: "ITR4_BP_003", severity: "ERROR", field: "turnover", section: "Business", message: "Turnover exceeds s.44AD limits for the cash/digital mix.", explanation: "ITR-4 cannot be used. ITR-3 JSON is not available in this release." });
@@ -147,7 +134,7 @@ export function businessValidate(data: NormalizedReturn, returnId = ""): Busines
       });
     }
   }
-  if (data.profession.grossReceipts > 0) {
+  if (data.profession.section !== "BOOKS" && data.profession.grossReceipts > 0) {
     const p = presumptive44ADA(data.profession.grossReceipts, data.profession.cashReceipts, data.profession.declaredIncome);
     if (!p.withinLimit) {
       push({ id: "ITR4_PR_001", severity: "ERROR", field: "grossReceipts", section: "Profession", message: "Professional receipts exceed s.44ADA limits.", explanation: "ITR-4 cannot be used for this turnover." });
@@ -189,7 +176,7 @@ export function businessValidate(data: NormalizedReturn, returnId = ""): Busines
     businessCash: data.business.cashReceipts,
     professionReceipts: data.profession.grossReceipts,
     professionCash: data.profession.cashReceipts,
-    usesPresumptive: true,
+    usesPresumptive: data.business.section !== "BOOKS" && data.profession.section !== "BOOKS",
     detailedBooks: data.business.section === "BOOKS",
     fnoTrading: false,
   });
@@ -245,7 +232,7 @@ export function businessValidate(data: NormalizedReturn, returnId = ""): Busines
       fixRoute: `/returns/${id}/reconcile`,
     });
   }
-  if (calc.flags.includes("UNSUPPORTED_CAPITAL_GAINS")) {
+  if (data.itrType === "ITR-4" && calc.flags.includes("UNSUPPORTED_CAPITAL_GAINS")) {
     push({
       id: "ITR4_CG_001",
       code: "UNSUPPORTED_SCENARIO",

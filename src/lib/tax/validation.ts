@@ -2,7 +2,7 @@ import type { NormalizedReturn } from "./model";
 import { businessValidate, type BusinessIssue } from "@/lib/validation/businessRules";
 import { completenessValidate } from "@/lib/validation/completeness";
 import { detectUnsupported } from "@/lib/itr-rules/ay2026_27/unsupported";
-import { validateITR4Json } from "@/lib/itr-json/validator/officialValidator";
+import { validateOfficialItrJson } from "@/lib/itr-json/validator/officialValidator";
 import { generateITRJson } from "@/lib/itr-json/mapper";
 
 export type Issue = {
@@ -57,7 +57,7 @@ export function validateReturn(data: NormalizedReturn, returnId?: string) {
 }
 
 export function validateAgainstOfficialSchema(json: unknown, assessmentYear: string, itrType: string) {
-  if (itrType !== "ITR-4") {
+  if (itrType !== "ITR-4" && itrType !== "ITR-3") {
     return {
       valid: false,
       errors: [
@@ -66,15 +66,15 @@ export function validateAgainstOfficialSchema(json: unknown, assessmentYear: str
           severity: "ERROR" as const,
           section: "Official JSON schema",
           field: "itrType",
-          message: "ITR-3 filing JSON is disabled.",
-          suggestion: "Use ITR-4 or wait for ITR-3.",
+          message: "Filing JSON is not available for this return type.",
+          suggestion: "Use ITR-3 or ITR-4.",
           href: "",
         },
       ],
       warnings: [],
     };
   }
-  const r = validateITR4Json(json, assessmentYear);
+  const r = validateOfficialItrJson(json, assessmentYear, itrType);
   return {
     valid: r.valid,
     errors: r.errors.map((e) => ({

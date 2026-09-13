@@ -87,11 +87,13 @@ export default async function SummaryPage({ params, searchParams }: { params: Pr
           <p>Open conflicts {openConflicts.length}</p>
           <p>Missing required information {errors.length ? "Yes" : "No blocking errors"}</p>
         </Card>
-        {errors.length || ret.itrType !== "ITR-4" ? (
+        {ret.itrType !== "ITR-4" && ret.itrType !== "ITR-3" ? (
           <p className="sans mt-6 text-sm text-red-800">
-            {ret.itrType !== "ITR-4"
-              ? "ITR-3 preparation is currently in development. Filing JSON generation is not available yet."
-              : "Unable to generate the return. Please correct the highlighted issues."}
+            Filing JSON is not available for this return type.
+          </p>
+        ) : errors.length ? (
+          <p className="sans mt-6 text-sm text-red-800">
+            Unable to generate the return. Please correct the highlighted issues.
           </p>
         ) : access.isPro ? (
           <form action={generateJsonAction} className="mt-6">

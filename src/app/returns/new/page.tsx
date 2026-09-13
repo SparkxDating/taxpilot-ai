@@ -36,7 +36,7 @@ export default async function NewReturn() {
           <p className="font-medium">ITR-4</p>
           <p className="sans mt-2 text-sm text-[#5c6773]">
             ITR-4 is for currently supported presumptive and salary scenarios. Existing eligibility rules decide if ITR-4
-            applies after you start. ITR-3 JSON is not available yet.
+            applies after you start. ITR-3 JSON is generated when eligibility places the return on ITR-3.
           </p>
         </Card>
         {existing ? (

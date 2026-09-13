@@ -32,7 +32,7 @@ function collectReasons(gate: JsonGenerationGate, returnId?: string, openConflic
   };
 
   if (gate.error === "itr3") {
-    blocking("ITR-3 path", "ITR-3 JSON generation is not available yet.", hrefFor(returnId, "interview"), "Eligibility");
+    blocking("Unsupported return type", "Filing JSON generation is not available for this return type.", hrefFor(returnId, "interview"), "Eligibility");
   }
   if (gate.error === "empty") {
     blocking("Required information missing", "Return data could not be loaded.");
@@ -69,10 +69,10 @@ function collectReasons(gate: JsonGenerationGate, returnId?: string, openConflic
     );
   }
   if (layers?.schema === "FAIL" || layers?.schemaIntegrity === "FAIL" || has("OFFICIAL_SCHEMA_INTEGRITY_FAILURE")) {
-    blocking("Schema validation failed", "Official ITR-4 schema validation did not pass.", hrefFor(returnId, "json"), "Schema");
+    blocking("Schema validation failed", "Official schema validation did not pass.", hrefFor(returnId, "json"), "Schema");
   }
   if (layers?.eligibility === "FAIL") {
-    blocking("ITR-4 eligibility", "This return is not eligible for ITR-4 JSON.", hrefFor(returnId, "interview"), "Eligibility");
+    blocking("ITR eligibility", "This return is not eligible for filing JSON.", hrefFor(returnId, "interview"), "Eligibility");
   }
 
   const seen = new Set(reasons.map((r) => r.detail));

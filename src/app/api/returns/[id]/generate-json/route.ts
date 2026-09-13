@@ -18,7 +18,7 @@ export async function POST(_: Request, { params }: { params: Promise<{ id: strin
   const gate = await canGenerateItrJson(id, { ownerUserId: session.role === "ADMIN" ? undefined : session.userId });
   if (gate.error === "empty") return NextResponse.json({ error: "Unable to generate the return." }, { status: 400 });
   if (gate.error === "itr3") {
-    return NextResponse.json({ error: "ITR-3 filing JSON is not available yet." }, { status: 400 });
+    return NextResponse.json({ error: "Filing JSON is not available for this return type." }, { status: 400 });
   }
   if (!gate.allowed || !gate.result?.json || !gate.data) {
     return NextResponse.json({ error: "Unable to generate the return. Please correct the highlighted issues." }, { status: 400 });
@@ -27,7 +27,7 @@ export async function POST(_: Request, { params }: { params: Promise<{ id: strin
   const result = gate.result;
   const payload = JSON.stringify(result.json, null, 2);
   const dir = path.join(process.env.VERCEL ? "/tmp/taxpilot-storage/json" : path.join(process.cwd(), "storage", "json"), id);
-  const file = path.join(dir, `ITR-4.json`);
+  const file = path.join(dir, `${data.itrType}.json`);
   try {
     await mkdir(dir, { recursive: true });
     await writeFile(file, payload, "utf8");
@@ -39,7 +39,7 @@ export async function POST(_: Request, { params }: { params: Promise<{ id: strin
     data: {
       returnId: id,
       assessmentYear: data.assessmentYear,
-      itrType: "ITR-4",
+      itrType: data.itrType,
       schemaVersion: result.schemaVersion,
       fileHash: result.digest,
       storagePath: `inline:${payload}`,

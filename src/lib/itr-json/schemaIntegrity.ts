@@ -4,9 +4,13 @@ import path from "path";
 
 export const OFFICIAL_SCHEMA_PATH = path.join(process.cwd(), "src/lib/itr-json/schemas/ay2026_27/itr4/schema.json");
 export const OFFICIAL_METADATA_PATH = path.join(process.cwd(), "src/lib/itr-json/schemas/ay2026_27/itr4/metadata.json");
+export const OFFICIAL_ITR3_SCHEMA_PATH = path.join(process.cwd(), "src/lib/itr-json/schemas/ay2026_27/itr3/schema.json");
+export const OFFICIAL_ITR3_METADATA_PATH = path.join(process.cwd(), "src/lib/itr-json/schemas/ay2026_27/itr3/metadata.json");
 export const INTEGRITY_FAIL_CODE = "OFFICIAL_SCHEMA_INTEGRITY_FAILURE";
 export const INTEGRITY_FAIL_MESSAGE =
   "The official AY 2026–27 ITR-4 schema could not be verified. JSON generation has been disabled.";
+export const ITR3_INTEGRITY_FAIL_MESSAGE =
+  "The official AY 2026–27 ITR-3 schema could not be verified. JSON generation has been disabled.";
 
 export type SchemaIntegrityResult = {
   ok: boolean;
@@ -81,4 +85,12 @@ export function verifySchemaIntegrityFrom(schemaPath: string, metadataPath: stri
 
 export function verifySchemaIntegrity() {
   return verifySchemaIntegrityFrom(OFFICIAL_SCHEMA_PATH, OFFICIAL_METADATA_PATH);
+}
+
+export function verifyItr3SchemaIntegrity(): SchemaIntegrityResult {
+  const r = verifySchemaIntegrityFrom(OFFICIAL_ITR3_SCHEMA_PATH, OFFICIAL_ITR3_METADATA_PATH);
+  return {
+    ...r,
+    message: r.ok ? "Official ITR-3 schema integrity verified." : ITR3_INTEGRITY_FAIL_MESSAGE,
+  };
 }

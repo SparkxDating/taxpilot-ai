@@ -32,7 +32,7 @@ export async function generateJsonAction(formData: FormData) {
   const result = gate.result;
   const payload = JSON.stringify(result.json, null, 2);
   const dir = path.join(process.env.VERCEL ? "/tmp/taxpilot-storage/json" : path.join(process.cwd(), "storage", "json"), id);
-  const file = path.join(dir, `ITR-4-${Date.now()}.json`);
+  const file = path.join(dir, `${data.itrType}-${Date.now()}.json`);
   try {
     await mkdir(dir, { recursive: true });
     await writeFile(file, payload, "utf8");
@@ -44,7 +44,7 @@ export async function generateJsonAction(formData: FormData) {
     data: {
       returnId: id,
       assessmentYear: data.assessmentYear,
-      itrType: "ITR-4",
+      itrType: data.itrType,
       schemaVersion: result.schemaVersion,
       fileHash: result.digest,
       storagePath: `inline:${payload}`,

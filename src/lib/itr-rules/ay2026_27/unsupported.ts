@@ -17,27 +17,24 @@ export function detectUnsupported(data: NormalizedReturn, returnId = "new"): Uns
     out.push({ code, severity: "ERROR", message, blocksJson: true, fixRoute: `/returns/${id}/${route}` });
   };
 
-  if (data.itrType === "ITR-3") {
-    block("UNSUPPORTED_ITR3", "ITR-3 preparation is currently in development. Filing JSON generation is not available yet.", "interview");
-  }
-  if (data.residentialStatus === "RNOR" || data.residentialStatus === "NRI") {
+  if (data.itrType === "ITR-4" && (data.residentialStatus === "RNOR" || data.residentialStatus === "NRI")) {
     block("UNSUPPORTED_NON_RESIDENT", "ITR-4 is only for residents. RNOR/NRI are not supported for filing JSON.", "profile");
   }
-  if (data.business.section === "BOOKS" || data.profession.section === "BOOKS") {
+  if (data.itrType === "ITR-4" && (data.business.section === "BOOKS" || data.profession.section === "BOOKS")) {
     block("UNSUPPORTED_BOOKS", "Detailed books (non-presumptive) are not supported for ITR-4 JSON.");
   }
   const otherCg = data.capitalGains.filter((g) => g.section !== "112A" && g.kind !== "LTCG_112A" && g.amount !== 0);
-  if (otherCg.length) {
+  if (data.itrType === "ITR-4" && otherCg.length) {
     block(
       "UNSUPPORTED_CAPITAL_GAIN_TYPE",
       "Capital gain calculation for this transaction type is not currently supported. Manual review is required.",
     );
   }
   const calc = TaxEngine.calculate(data);
-  if (calc.capitalGains > ITR4_112A_CAP) {
+  if (data.itrType === "ITR-4" && calc.capitalGains > ITR4_112A_CAP) {
     block("UNSUPPORTED_112A_OVER_CAP", "s.112A LTCG exceeds ₹1.25 lakh allowed in ITR-4.");
   }
-  if (calc.grossTotalIncomeIncLtcg > ITR4_INCOME_CAP) {
+  if (data.itrType === "ITR-4" && calc.grossTotalIncomeIncLtcg > ITR4_INCOME_CAP) {
     block("UNSUPPORTED_INCOME_LIMIT", "Total income exceeds the ₹50 lakh ITR-4 ceiling.");
   }
   if (data.business.section === "44AE") {

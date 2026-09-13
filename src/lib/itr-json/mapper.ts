@@ -6,6 +6,7 @@ import type { TaxComputation } from "@/lib/tax/engine";
 import { TaxEngine } from "@/lib/tax/engine";
 import { loadNormalized } from "@/lib/tax/load";
 import { openConflictCount } from "@/lib/documents/conflicts";
+import { INTEGRITY_FAIL_MESSAGE, ITR3_INTEGRITY_FAIL_MESSAGE } from "@/lib/itr-json/schemaIntegrity";
 
 export const SCHEMA_VERSION = OFFICIAL_SCHEMA_VER;
 
@@ -52,7 +53,7 @@ export function generateITRJson(
     errors.push({
       severity: "ERROR",
       code: "OFFICIAL_SCHEMA_INTEGRITY_FAILURE",
-      message: "The official AY 2026–27 ITR-4 schema could not be verified. JSON generation has been disabled.",
+      message: data.itrType === "ITR-3" ? ITR3_INTEGRITY_FAIL_MESSAGE : INTEGRITY_FAIL_MESSAGE,
       field: "OFFICIAL_SCHEMA_INTEGRITY_FAILURE",
       section: "Schema",
     });
@@ -82,7 +83,17 @@ export function generateITRJson(
       fixRoute: b.fixRoute,
     });
   }
+  for (const m of gate.mappingIssues) {
+    errors.push({
+      severity: "ERROR",
+      code: "ITR3_REQUIRED_FIELD_MISSING",
+      message: m.message,
+      field: m.field,
+      section: m.section,
+    });
+  }
   for (const e of gate.official.errors) {
+    if (gate.mappingIssues.some((m) => m.field === e.field && m.message === e.message)) continue;
     errors.push({
       severity: "ERROR",
       code: "OFFICIAL_SCHEMA_VALIDATION_FAILURE",
@@ -130,7 +141,7 @@ export async function canGenerateItrJson(
 ): Promise<JsonGenerationGate> {
   const data = await loadNormalized(returnId, opts?.ownerUserId);
   if (!data) return { allowed: false, data: null, result: null, error: "empty" };
-  if (data.itrType !== "ITR-4") return { allowed: false, data, result: null, error: "itr3" };
+  if (data.itrType !== "ITR-4" && data.itrType !== "ITR-3") return { allowed: false, data, result: null, error: "itr3" };
   const openDocumentConflicts = await openConflictCount(returnId);
   const result = generateITRJson(data, {
     returnId,

@@ -40,6 +40,9 @@ export default async function IncomePage({ params }: { params: Promise<{ id: str
   const hp = ret.houseProperties[0];
   const interest = ret.otherIncomes.find((o) => o.kind === "Interest");
   const dividend = ret.otherIncomes.find((o) => o.kind === "Dividend");
+  const pl = ret.profitLoss;
+  const books = b?.section === "BOOKS";
+  const showBooks = ret.itrType === "ITR-3" || books;
   const prep = parsePreparation(ret.preparationJson);
   const overview = overviewFromRecords(id, {
     documents: ret.documents,
@@ -85,7 +88,7 @@ export default async function IncomePage({ params }: { params: Promise<{ id: str
               <PrefillNote entry={prep.fields["salary.tds"]} returnId={id} field="salary.tds" />
             </Card>
           ) : null}
-          {sources.some((x) => ["BUSINESS", "FREELANCING"].includes(x)) ? (
+          {sources.some((x) => ["BUSINESS", "FREELANCING"].includes(x)) && !books ? (
             <Card className="space-y-2">
               <p className="font-medium">Presumptive business (44AD)</p>
               <Input name="nature" placeholder="Nature of business" defaultValue={b?.nature} />
@@ -141,12 +144,18 @@ export default async function IncomePage({ params }: { params: Promise<{ id: str
             <Input name="dividend" type="number" placeholder="Dividend" defaultValue={dividend?.amount || ""} />
             <PrefillNote entry={prep.fields["income.dividend"]} returnId={id} field="income.dividend" />
           </Card>
-          {ret.itrType === "ITR-3" ? (
-            <Card>
-              <p className="font-medium">ITR-3 books (architecture)</p>
-              <p className="sans mt-2 text-sm text-[#5c6773]">
-                P&amp;L and balance sheet models exist. Full ITR-3 mapping ships in a later phase. Enter revenue/expenses in a future build; this release keeps the tables ready.
-              </p>
+          {showBooks ? (
+            <Card className="space-y-2">
+              <p className="font-medium">ITR-3 profit and loss</p>
+              <p className="sans text-sm text-[#5c6773]">Declared profit is used for tax computation and ITR-3 JSON mapping.</p>
+              <Input name="nature" placeholder="Nature of business" defaultValue={b?.nature} />
+              <Input name="plRevenue" type="number" placeholder="Revenue / turnover" defaultValue={pl?.revenue || b?.turnover || ""} />
+              <Input name="plOtherIncome" type="number" placeholder="Other operating income" defaultValue={pl?.otherIncome || ""} />
+              <Input name="plPurchases" type="number" placeholder="Purchases" defaultValue={pl?.purchases || ""} />
+              <Input name="plEmployeeCost" type="number" placeholder="Employee cost" defaultValue={pl?.employeeCost || ""} />
+              <Input name="plDepreciation" type="number" placeholder="Depreciation" defaultValue={pl?.depreciation || ""} />
+              <Input name="plOtherExpenses" type="number" placeholder="Other expenses" defaultValue={pl?.otherExpenses || ""} />
+              <Input name="plNetProfit" type="number" placeholder="Net profit (declared income)" defaultValue={pl?.netProfit || b?.declaredIncome || ""} />
             </Card>
           ) : null}
           <Button>Save income</Button>
